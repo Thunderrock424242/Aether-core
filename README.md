@@ -19,6 +19,11 @@ A.E.T.H.E.R AI planning + implementation workspace.
 ./scripts/run_sidecar_dev.sh
 ```
 
+Windows PowerShell quick start:
+```powershell
+.\scripts\run_sidecar_dev.ps1
+```
+
 Helpful environment flags for day-to-day dev:
 - `AETHER_DEV_RELOAD=true` (default) to auto-reload when Python files change.
 - `AETHER_HOST=0.0.0.0` to expose the sidecar for local network/device testing.
