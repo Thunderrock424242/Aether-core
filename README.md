@@ -10,7 +10,7 @@ A.E.T.H.E.R AI planning + implementation workspace.
 - [`docs/ai-production-orchestration.md`](docs/ai-production-orchestration.md) - production deployment + observability stack.
 
 ## Implemented runtime
-- [`aether_sidecar/`](aether_sidecar/) - runnable non-Java AI sidecar service with subsystem routing, keyword alerts, safety checks, memory, pluggable model backends, and optional per-subsystem model selection.
+- [`aether_sidecar/`](aether_sidecar/) - runnable non-Java AI sidecar service with subsystem routing, keyword alerts, safety checks, session memory, teachable per-session learning notes, pluggable model backends, and optional per-subsystem model selection.
 - [`training_pipeline/`](training_pipeline/) - dataset validation + LoRA fine-tuning starter scripts.
 - [`deploy/production/`](deploy/production/) - Docker Compose orchestration with Prometheus/Grafana/Loki.
 
@@ -29,3 +29,4 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_HOST=0.0.0.0` to expose the sidecar for local network/device testing.
 - `AETHER_PORT=8765` to change the API port.
 - `AETHER_ACTIVATION_HOOK_ENABLED=true` to require mod lifecycle activation before `/generate` responds.
+- `AETHER_LEARNING_LESSON_LIMIT=16` to control how many user-taught facts are retained per session.

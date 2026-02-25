@@ -13,3 +13,17 @@ class SessionMemory:
 
     def history(self, session_id: str) -> list[dict[str, str]]:
         return list(self._turns[session_id])
+
+
+class SessionLearning:
+    def __init__(self, lesson_limit: int = 16):
+        self.lesson_limit = lesson_limit
+        self._lessons = defaultdict(list)
+
+    def teach(self, session_id: str, lesson: str) -> None:
+        self._lessons[session_id].append(lesson)
+        if len(self._lessons[session_id]) > self.lesson_limit:
+            self._lessons[session_id] = self._lessons[session_id][-self.lesson_limit :]
+
+    def lessons(self, session_id: str) -> list[str]:
+        return list(self._lessons[session_id])

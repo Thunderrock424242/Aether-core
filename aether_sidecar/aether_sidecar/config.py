@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 20.0
     max_message_chars: int = 800
     memory_turn_limit: int = 6
+    learning_lesson_limit: int = 16
     safety_enabled: bool = True
     ollama_url: str = "http://127.0.0.1:11434/api/generate"
     app_version: str = Field(default="0.1.0")
