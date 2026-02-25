@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0")
     activation_hook_enabled: bool = False
     activation_hook_token: str | None = None
+    subsystem_models: str = ""
 
 
 settings = Settings()
