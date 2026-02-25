@@ -1,4 +1,6 @@
 from pydantic import Field
+
+from .models import Subsystem
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +16,31 @@ class Settings(BaseSettings):
     safety_enabled: bool = True
     ollama_url: str = "http://127.0.0.1:11434/api/generate"
     app_version: str = Field(default="0.1.0")
+    subsystem_models: str = ""
 
 
 settings = Settings()
+
+
+
+def parse_subsystem_models(raw: str) -> dict[Subsystem, str]:
+    mapping: dict[Subsystem, str] = {}
+    if not raw.strip():
+        return mapping
+
+    by_name = {subsystem.value.lower(): subsystem for subsystem in Subsystem if subsystem != Subsystem.AUTO}
+    for token in raw.split(","):
+        entry = token.strip()
+        if not entry:
+            continue
+
+        if ":" not in entry:
+            continue
+
+        subsystem_key, model_name = entry.split(":", 1)
+        subsystem = by_name.get(subsystem_key.strip().lower())
+        model_name = model_name.strip()
+        if subsystem and model_name:
+            mapping[subsystem] = model_name
+
+    return mapping

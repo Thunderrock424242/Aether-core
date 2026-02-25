@@ -9,6 +9,7 @@ This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/
 - Bounded session memory
 - Safety pre-check + refusal behavior
 - Pluggable backend (`template` and `ollama`)
+- Optional per-subsystem model routing (`AETHER_SUBSYSTEM_MODELS`) for specialist sub-models
 - Unit tests for routing/safety/app endpoints
 
 ## Quick start
@@ -32,6 +33,7 @@ This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/
 {
   "text": "assistant response",
   "subsystem_used": "Eclipse",
+  "model_used": "aether-eclipse-v1",
   "subsystem_alerts": {"Eclipse": ["rift", "anomaly"]},
   "safety_flags": [],
   "latency_ms": 42
