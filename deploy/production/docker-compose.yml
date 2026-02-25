@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  aether-sidecar:
+    image: python:3.12-slim
+    container_name: aether-sidecar
+    working_dir: /app
+    volumes:
+      - ../../:/app
+    environment:
+      - AETHER_MODEL_BACKEND=${AETHER_MODEL_BACKEND:-template}
+      - AETHER_MODEL_NAME=${AETHER_MODEL_NAME:-aether-template-v1}
+      - AETHER_OLLAMA_URL=${AETHER_OLLAMA_URL:-http://host.docker.internal:11434/api/generate}
+    command: bash -lc "pip install -e ./aether_sidecar && python ./aether_sidecar/run.py"
+    ports:
+      - "8765:8765"
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: aether-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - aether-sidecar
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: aether-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: aether-grafana
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
