@@ -5,15 +5,18 @@ from fastapi import FastAPI, HTTPException
 
 from .backends import OllamaBackend, TemplateBackend
 from .config import parse_subsystem_models, settings
-from .memory import SessionMemory
+from .memory import SessionLearning, SessionMemory
 from .models import (
     GenerateRequest,
     GenerateResponse,
     HealthResponse,
     HookStatusResponse,
+    LearningStatusResponse,
     ModLifecycleHookRequest,
     ModLifecycleHookResponse,
     Subsystem,
+    TeachRequest,
+    TeachResponse,
     VersionResponse,
 )
 from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
@@ -42,6 +45,7 @@ app = FastAPI(title="A.E.T.H.E.R Sidecar", version=settings.app_version)
 app.middleware("http")(metrics_middleware)
 
 memory = SessionMemory(turn_limit=settings.memory_turn_limit)
+learning = SessionLearning(lesson_limit=settings.learning_lesson_limit)
 activation_registry = ActivationRegistry()
 subsystem_models = parse_subsystem_models(settings.subsystem_models)
 backend = (
@@ -99,6 +103,17 @@ async def metrics():
     return metrics_response()
 
 
+@app.post("/teach", response_model=TeachResponse)
+async def teach(payload: TeachRequest) -> TeachResponse:
+    learning.teach(payload.session_id, payload.lesson.strip())
+    return TeachResponse(lessons_count=len(learning.lessons(payload.session_id)))
+
+
+@app.get("/learning/{session_id}", response_model=LearningStatusResponse)
+async def learning_status(session_id: str) -> LearningStatusResponse:
+    return LearningStatusResponse(session_id=session_id, lessons=learning.lessons(session_id))
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(payload: GenerateRequest) -> GenerateResponse:
     started = time.perf_counter()
@@ -116,6 +131,7 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
     safety = evaluate_message(message) if settings.safety_enabled else None
     alerts = detect_subsystem_alerts(message)
     subsystem = payload.subsystem if payload.subsystem != Subsystem.AUTO else pick_subsystem(message)
+    learned_context = learning.lessons(payload.session_id)
 
     if safety and safety.blocked:
         GENERATE_REQUESTS.labels(subsystem.value, "true").inc()
@@ -125,16 +141,19 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
             model_used=(subsystem_models.get(subsystem) or settings.model_name),
             subsystem_alerts={k.value: v for k, v in alerts.items()},
             safety_flags=safety.flags,
+            learned_context=learned_context,
             latency_ms=int((time.perf_counter() - started) * 1000),
         )
 
     history_text = "\n".join(f"{x['role']}: {x['text']}" for x in memory.history(payload.session_id)[-6:])
+    lesson_text = "\n".join(f"- {lesson}" for lesson in learned_context)
     full_prompt = (
         f"Session: {payload.session_id}\n"
         f"Subsystem: {subsystem.value}\n"
         f"Detected keyword alerts: { {k.value: v for k, v in alerts.items()} }\n"
         f"Player context: {payload.player_context}\n"
         f"World context: {payload.world_context}\n"
+        f"Learned preferences/facts:\n{lesson_text}\n"
         f"History:\n{history_text}\n\n"
         f"Player: {message}"
     )
@@ -150,5 +169,6 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
         model_used=model_used,
         subsystem_alerts={k.value: v for k, v in alerts.items()},
         safety_flags=(safety.flags if safety else []),
+        learned_context=learned_context,
         latency_ms=int((time.perf_counter() - started) * 1000),
     )

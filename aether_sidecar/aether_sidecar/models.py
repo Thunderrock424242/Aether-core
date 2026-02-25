@@ -14,8 +14,6 @@ class Subsystem(str, Enum):
     AUTO = "Auto"
 
 
-
-
 class HookAction(str, Enum):
     ACTIVATE = "activate"
     DEACTIVATE = "deactivate"
@@ -38,6 +36,22 @@ class HookStatusResponse(BaseModel):
     activation_required: bool
     active_instances: list[str] = Field(default_factory=list)
 
+
+class TeachRequest(BaseModel):
+    lesson: str = Field(min_length=1, max_length=1000)
+    session_id: str = Field(min_length=1)
+
+
+class TeachResponse(BaseModel):
+    saved: bool = True
+    lessons_count: int
+
+
+class LearningStatusResponse(BaseModel):
+    session_id: str
+    lessons: list[str] = Field(default_factory=list)
+
+
 class GenerateRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     subsystem: Subsystem = Subsystem.AUTO
@@ -52,6 +66,7 @@ class GenerateResponse(BaseModel):
     model_used: str
     subsystem_alerts: dict[str, list[str]] = Field(default_factory=dict)
     safety_flags: list[str] = Field(default_factory=list)
+    learned_context: list[str] = Field(default_factory=list)
     latency_ms: int
 
 

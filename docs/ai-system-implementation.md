@@ -3,11 +3,12 @@
 This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/`.
 
 ## What is implemented
-- FastAPI sidecar endpoints: `POST /generate`, `GET /health`, `GET /version`, `GET /metrics`
+- FastAPI sidecar endpoints: `POST /generate`, `POST /teach`, `GET /learning/{session_id}`, `GET /health`, `GET /version`, `GET /metrics`
 - Mod lifecycle hook endpoints: `POST /hooks/mod-lifecycle`, `GET /hooks/status`
 - Keyword-driven subsystem alert detection for Aegis/Eclipse/Terra/Helios/Enforcer/Requiem
 - Subsystem auto-routing based on detected keyword matches
 - Bounded session memory
+- Teachable per-session learning notes for user preferences/facts
 - Safety pre-check + refusal behavior
 - Pluggable backend (`template` and `ollama`)
 - Optional per-subsystem model routing (`AETHER_SUBSYSTEM_MODELS`) for specialist sub-models
@@ -39,9 +40,24 @@ The dev script now bootstraps/reuses `.venv`, installs dependencies, and runs Uv
   "model_used": "aether-eclipse-v1",
   "subsystem_alerts": {"Eclipse": ["rift", "anomaly"]},
   "safety_flags": [],
+  "learned_context": ["Use concise responses"],
   "latency_ms": 42
 }
 ```
+
+
+## Teachable learning playground API
+Use `POST /teach` to store facts/preferences per session.
+
+```json
+POST /teach
+{
+  "lesson": "I am building Minecraft NeoForge mods with Gradle.",
+  "session_id": "player-uuid"
+}
+```
+
+Read stored lessons with `GET /learning/{session_id}`. These notes are injected into `/generate` prompts and echoed back as `learned_context` in responses.
 
 ## Mod lifecycle activation hook (for bundled Java mods)
 When `AETHER_ACTIVATION_HOOK_ENABLED=true`, the sidecar requires at least one active mod instance before `/generate` will respond.
