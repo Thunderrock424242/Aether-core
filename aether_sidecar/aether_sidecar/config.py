@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     safety_enabled: bool = True
     ollama_url: str = "http://127.0.0.1:11434/api/generate"
     app_version: str = Field(default="0.1.0")
-    subsystem_models: str = ""
+    activation_hook_enabled: bool = False
+    activation_hook_token: str | None = None
 
 
 settings = Settings()
