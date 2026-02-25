@@ -30,6 +30,7 @@ def test_generate_returns_keyword_alerts():
     assert body["subsystem_used"] == "Eclipse"
     assert "Eclipse" in body["subsystem_alerts"]
     assert "anomaly" in body["subsystem_alerts"]["Eclipse"]
+    assert body["model_used"] == "aether-template-v1"
 
 
 def test_metrics_endpoint_available():

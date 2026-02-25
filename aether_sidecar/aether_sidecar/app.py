@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI, HTTPException
 
 from .backends import OllamaBackend, TemplateBackend
-from .config import settings
+from .config import parse_subsystem_models, settings
 from .memory import SessionMemory
 from .models import (
     GenerateRequest,
@@ -44,9 +44,14 @@ app.middleware("http")(metrics_middleware)
 memory = SessionMemory(turn_limit=settings.memory_turn_limit)
 activation_registry = ActivationRegistry()
 backend = (
-    OllamaBackend(settings.ollama_url, settings.model_name, settings.request_timeout_seconds)
+    OllamaBackend(
+        settings.ollama_url,
+        settings.model_name,
+        settings.request_timeout_seconds,
+        subsystem_models=subsystem_models,
+    )
     if settings.model_backend.lower() == "ollama"
-    else TemplateBackend()
+    else TemplateBackend(settings.model_name, subsystem_models=subsystem_models)
 )
 
 
@@ -116,6 +121,7 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
         return GenerateResponse(
             text=safe_refusal(),
             subsystem_used=subsystem,
+            model_used=(subsystem_models.get(subsystem) or settings.model_name),
             subsystem_alerts={k.value: v for k, v in alerts.items()},
             safety_flags=safety.flags,
             latency_ms=int((time.perf_counter() - started) * 1000),
@@ -132,7 +138,7 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
         f"Player: {message}"
     )
 
-    text = await backend.generate(full_prompt, subsystem)
+    text, model_used = await backend.generate(full_prompt, subsystem)
     memory.append(payload.session_id, "player", message)
     memory.append(payload.session_id, "assistant", text)
     GENERATE_REQUESTS.labels(subsystem.value, "false").inc()
@@ -140,6 +146,7 @@ async def generate(payload: GenerateRequest) -> GenerateResponse:
     return GenerateResponse(
         text=text,
         subsystem_used=subsystem,
+        model_used=model_used,
         subsystem_alerts={k.value: v for k, v in alerts.items()},
         safety_flags=(safety.flags if safety else []),
         latency_ms=int((time.perf_counter() - started) * 1000),

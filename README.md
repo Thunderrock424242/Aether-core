@@ -10,7 +10,7 @@ A.E.T.H.E.R AI planning + implementation workspace.
 - [`docs/ai-production-orchestration.md`](docs/ai-production-orchestration.md) - production deployment + observability stack.
 
 ## Implemented runtime
-- [`aether_sidecar/`](aether_sidecar/) - runnable non-Java AI sidecar service with subsystem routing, keyword alerts, safety checks, memory, lifecycle activation hooks, and pluggable model backends.
+- [`aether_sidecar/`](aether_sidecar/) - runnable non-Java AI sidecar service with subsystem routing, keyword alerts, safety checks, memory, pluggable model backends, and optional per-subsystem model selection.
 - [`training_pipeline/`](training_pipeline/) - dataset validation + LoRA fine-tuning starter scripts.
 - [`deploy/production/`](deploy/production/) - Docker Compose orchestration with Prometheus/Grafana/Loki.
 
