@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aether-sidecar"
+version = "0.1.0"
+description = "Local A.E.T.H.E.R sidecar for Minecraft mod integration"
+requires-python = ">=3.10"
+dependencies = ["fastapi>=0.110.0", "uvicorn>=0.29.0", "pydantic>=2.6.0", "pydantic-settings>=2.2.0", "httpx>=0.27.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools]
+packages = ["aether_sidecar"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
