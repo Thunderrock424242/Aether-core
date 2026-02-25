@@ -14,6 +14,30 @@ class Subsystem(str, Enum):
     AUTO = "Auto"
 
 
+
+
+class HookAction(str, Enum):
+    ACTIVATE = "activate"
+    DEACTIVATE = "deactivate"
+
+
+class ModLifecycleHookRequest(BaseModel):
+    action: HookAction
+    mod_id: str = Field(min_length=1, max_length=128)
+    mod_version: str = Field(min_length=1, max_length=64)
+    instance_id: str = Field(default="default", min_length=1, max_length=128)
+    token: str | None = None
+
+
+class ModLifecycleHookResponse(BaseModel):
+    active_instances: list[str] = Field(default_factory=list)
+    activation_required: bool
+
+
+class HookStatusResponse(BaseModel):
+    activation_required: bool
+    active_instances: list[str] = Field(default_factory=list)
+
 class GenerateRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     subsystem: Subsystem = Subsystem.AUTO
