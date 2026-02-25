@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -24,6 +25,7 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     text: str
     subsystem_used: Subsystem
+    subsystem_alerts: dict[str, list[str]] = Field(default_factory=dict)
     safety_flags: list[str] = Field(default_factory=list)
     latency_ms: int
 

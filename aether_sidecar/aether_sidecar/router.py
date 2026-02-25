@@ -10,12 +10,20 @@ KEYWORDS = {
 }
 
 
-def pick_subsystem(message: str) -> Subsystem:
+def detect_subsystem_alerts(message: str) -> dict[Subsystem, list[str]]:
     lowered = message.lower()
-    scores = {k: 0 for k in KEYWORDS}
+    alerts: dict[Subsystem, list[str]] = {}
     for subsystem, words in KEYWORDS.items():
-        for word in words:
-            if word in lowered:
-                scores[subsystem] += 1
-    winner = max(scores, key=scores.get)
-    return winner if scores[winner] > 0 else Subsystem.AEGIS
+        matches = [word for word in words if word in lowered]
+        if matches:
+            alerts[subsystem] = matches
+    return alerts
+
+
+def pick_subsystem(message: str) -> Subsystem:
+    alerts = detect_subsystem_alerts(message)
+    if not alerts:
+        return Subsystem.AEGIS
+
+    winner = max(alerts, key=lambda subsystem: len(alerts[subsystem]))
+    return winner

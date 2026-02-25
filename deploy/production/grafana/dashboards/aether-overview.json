@@ -1,0 +1,42 @@
+{
+  "id": null,
+  "uid": "aether-overview",
+  "title": "A.E.T.H.E.R Sidecar Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(rate(aether_http_requests_total[5m])) by (path)",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Generate Request Latency p95",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aether_http_request_latency_seconds_bucket{path=\"/generate\"}[5m])) by (le))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Generate Volume by Subsystem",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(aether_generate_requests_total{blocked=\"false\"}[5m])) by (subsystem)",
+          "legendFormat": "{{subsystem}}"
+        }
+      ]
+    }
+  ]
+}

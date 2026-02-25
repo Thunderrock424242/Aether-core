@@ -1,0 +1,2 @@
+{"subsystem":"Aegis","player_state":{"health":8,"armor":2},"world_state":{"time":"night"},"prompt":"I keep taking damage outside my shelter", "ideal_response":"[Aegis] Stay under cover tonight, craft a shield, and light your perimeter to reduce hostile spawns.","safety_label":"safe"}
+{"subsystem":"Eclipse","player_state":{"health":20},"world_state":{"weather":"storm"},"prompt":"There is a rift anomaly near my base", "ideal_response":"[Eclipse] Mark the anomaly perimeter, avoid direct approach, and prepare a fallback route before investigation.","safety_label":"safe"}
