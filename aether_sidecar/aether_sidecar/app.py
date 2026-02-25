@@ -43,6 +43,7 @@ app.middleware("http")(metrics_middleware)
 
 memory = SessionMemory(turn_limit=settings.memory_turn_limit)
 activation_registry = ActivationRegistry()
+subsystem_models = parse_subsystem_models(settings.subsystem_models)
 backend = (
     OllamaBackend(
         settings.ollama_url,
