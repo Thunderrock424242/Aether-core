@@ -17,6 +17,10 @@ class BaseBackend:
         raise NotImplementedError
 
 
+class BackendUnavailableError(RuntimeError):
+    """Raised when the configured model backend cannot be reached."""
+
+
 class OllamaBackend(BaseBackend):
     def __init__(
         self,
@@ -35,13 +39,18 @@ class OllamaBackend(BaseBackend):
 
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
         model_name = self.model_for_subsystem(subsystem)
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            resp = await client.post(self.base_url, json={
-                "model": model_name,
-                "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
-                "stream": False,
-            })
-            resp.raise_for_status()
-            data = resp.json()
-            text = (data.get("response") or "").strip() or "No model response."
-            return text, model_name
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(self.base_url, json={
+                    "model": model_name,
+                    "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
+                    "stream": False,
+                })
+                resp.raise_for_status()
+                data = resp.json()
+                text = (data.get("response") or "").strip() or "No model response."
+                return text, model_name
+        except httpx.RequestError as exc:
+            raise BackendUnavailableError(
+                f"Failed to contact model backend at {self.base_url}: {exc}"
+            ) from exc

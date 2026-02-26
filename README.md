@@ -30,6 +30,7 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_PORT=8765` to change the API port.
 - `AETHER_ACTIVATION_HOOK_ENABLED=true` to require mod lifecycle activation before `/generate` responds.
 - `AETHER_LEARNING_LESSON_LIMIT=16` to control how many user-taught facts are retained per session.
+- `AETHER_LEARNING_LOG_PATH=.aether/learning_lessons.jsonl` to persist playground teaching lessons across sidecar restarts.
 - `AETHER_DEV_PLAYGROUND_ENABLED=false` keeps the dev-only browser playground disabled by default.
 - `AETHER_DEV_PLAYGROUND_TOKEN=` optional bearer token required by `/generate`, `/teach`, and `/learning/*` when set.
 

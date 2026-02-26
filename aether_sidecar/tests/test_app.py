@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from aether_sidecar import app as app_module
-from aether_sidecar.backends import TemplateBackend
+from aether_sidecar.backends import BackendUnavailableError
 from aether_sidecar.config import settings
 
 activation_registry = app_module.activation_registry
@@ -25,7 +25,7 @@ def setup_function() -> None:
     settings.activation_hook_token = None
     settings.dev_playground_enabled = False
     settings.dev_playground_token = None
-    app_module.backend = TemplateBackend("aether-template-v1")
+    app_module.backend = FakeBackend()
 
 
 def test_generate_returns_keyword_alerts():
@@ -213,3 +213,23 @@ def test_playground_token_required_for_generate_teach_learning():
         },
     )
     assert generate_allowed.status_code == 200
+
+
+def test_generate_returns_503_when_model_backend_unavailable():
+    class DownBackend:
+        async def generate(self, prompt: str, subsystem):
+            raise BackendUnavailableError("backend offline")
+
+    app_module.backend = DownBackend()
+
+    response = client.post(
+        "/generate",
+        json={
+            "message": "hello",
+            "subsystem": "Auto",
+            "session_id": "backend-down",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "backend offline"
