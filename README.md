@@ -30,6 +30,8 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_PORT=8765` to change the API port.
 - `AETHER_ACTIVATION_HOOK_ENABLED=true` to require mod lifecycle activation before `/generate` responds.
 - `AETHER_LEARNING_LESSON_LIMIT=16` to control how many user-taught facts are retained per session.
+- `AETHER_DEV_PLAYGROUND_ENABLED=false` keeps the dev-only browser playground disabled by default.
+- `AETHER_DEV_PLAYGROUND_TOKEN=` optional bearer token required by `/generate`, `/teach`, and `/learning/*` when set.
 
 ## Teaching playground shortcut
 Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to teach a lesson.
@@ -40,4 +42,31 @@ Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to t
 
 ```powershell
 .\scripts\teach_lesson.ps1 -SessionId player-uuid -Lesson "I am building Minecraft NeoForge mods with Gradle."
+```
+
+
+## Dev playground UI (dev-only)
+Enable a local browser playground for teaching + chat iteration:
+
+```bash
+AETHER_DEV_PLAYGROUND_ENABLED=true ./scripts/run_sidecar_dev.sh
+# then open http://127.0.0.1:8765/dev/playground
+```
+
+```powershell
+$env:AETHER_DEV_PLAYGROUND_ENABLED = "true"
+.\scripts\run_sidecar_dev.ps1
+# then open http://127.0.0.1:8765/dev/playground
+```
+
+Optional token lock-down:
+
+```bash
+AETHER_DEV_PLAYGROUND_ENABLED=true AETHER_DEV_PLAYGROUND_TOKEN=dev-secret ./scripts/run_sidecar_dev.sh
+```
+
+```powershell
+$env:AETHER_DEV_PLAYGROUND_ENABLED = "true"
+$env:AETHER_DEV_PLAYGROUND_TOKEN = "dev-secret"
+.\scripts\run_sidecar_dev.ps1
 ```

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     activation_hook_enabled: bool = False
     activation_hook_token: str | None = None
     subsystem_models: str = ""
+    dev_playground_enabled: bool = False
+    dev_playground_token: str | None = None
 
 
 settings = Settings()

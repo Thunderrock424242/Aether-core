@@ -70,6 +70,16 @@ class GenerateResponse(BaseModel):
     latency_ms: int
 
 
+
+
+class DevPlaygroundAuthRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class DevPlaygroundAuthResponse(BaseModel):
+    ok: bool = True
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     model_backend: str
