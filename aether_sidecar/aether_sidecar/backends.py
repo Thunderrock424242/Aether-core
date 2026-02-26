@@ -57,6 +57,10 @@ class OllamaBackend(BaseBackend):
                 )
                 resp.raise_for_status()
             return model_name
+        except httpx.HTTPStatusError as exc:
+            raise BackendUnavailableError(
+                f"Model backend at {self.base_url} returned {exc.response.status_code}: {exc.response.text}"
+            ) from exc
         except httpx.RequestError as exc:
             raise BackendUnavailableError(
                 f"Failed to contact model backend at {self.base_url}: {exc}"
@@ -79,6 +83,10 @@ class OllamaBackend(BaseBackend):
                 data = resp.json()
                 text = (data.get("response") or "").strip() or "No model response."
                 return text, model_name
+        except httpx.HTTPStatusError as exc:
+            raise BackendUnavailableError(
+                f"Model backend at {self.base_url} returned {exc.response.status_code}: {exc.response.text}"
+            ) from exc
         except httpx.RequestError as exc:
             raise BackendUnavailableError(
                 f"Failed to contact model backend at {self.base_url}: {exc}"
