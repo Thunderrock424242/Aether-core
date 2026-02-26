@@ -131,6 +131,39 @@ def test_activation_hook_lifecycle_blocks_until_activated():
     assert allowed.status_code == 200
 
 
+def test_generate_allows_dev_playground_bypass_when_enabled():
+    settings.activation_hook_enabled = True
+    settings.dev_playground_enabled = True
+
+    response = client.post(
+        "/generate",
+        headers={"X-Aether-Dev-Playground": "true"},
+        json={
+            "message": "hello from playground",
+            "subsystem": "Auto",
+            "session_id": "test-session-playground-bypass",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+def test_generate_does_not_bypass_activation_without_playground_header():
+    settings.activation_hook_enabled = True
+    settings.dev_playground_enabled = True
+
+    response = client.post(
+        "/generate",
+        json={
+            "message": "hello",
+            "subsystem": "Auto",
+            "session_id": "test-session-no-bypass",
+        },
+    )
+
+    assert response.status_code == 503
+
+
 def test_activation_hook_rejects_invalid_token():
     settings.activation_hook_enabled = True
     settings.activation_hook_token = "secret"
