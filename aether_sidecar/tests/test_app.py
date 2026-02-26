@@ -229,6 +229,21 @@ def test_dev_playground_page_enabled():
     assert "Conversation" in response.text
 
 
+def test_root_redirects_to_generate_ui():
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/generate"
+
+
+def test_generate_get_serves_chat_page():
+    response = client.get("/generate")
+
+    assert response.status_code == 200
+    assert "A.E.T.H.E.R Chat" in response.text
+    assert "API clients can POST to" in response.text
+
+
 def test_playground_token_required_for_generate_teach_learning():
     settings.dev_playground_token = "secret"
 

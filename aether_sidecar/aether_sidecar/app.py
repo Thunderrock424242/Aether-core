@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .backends import BackendUnavailableError, OllamaBackend
 from .config import parse_subsystem_models, settings
@@ -94,6 +94,78 @@ async def health() -> HealthResponse:
         model_name=settings.model_name,
         keep_alive=settings.ollama_keep_alive,
     )
+
+
+@app.get("/")
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/generate", status_code=307)
+
+
+@app.get("/generate", response_class=HTMLResponse)
+async def generate_home() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>A.E.T.H.E.R Chat</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 2rem auto; max-width: 860px; padding: 0 1rem; }
+    textarea, input, button { width: 100%; margin-top: .4rem; padding: .55rem; font: inherit; }
+    button { cursor: pointer; }
+    .chatlog { background: #0d1117; color: #e6edf3; padding: .8rem; border-radius: 8px; min-height: 120px; margin-top: 1rem; }
+    .chatlog p { margin: .4rem 0; white-space: pre-wrap; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+<h1>A.E.T.H.E.R Chat</h1>
+<p class="muted">Use this page for regular website chat at <code>/generate</code>. API clients can POST to <code>/generate</code>.</p>
+<label for="session">Session ID</label>
+<input id="session" value="web-user-session">
+<label for="message">Message</label>
+<textarea id="message" rows="4" placeholder="Ask A.E.T.H.E.R anything..."></textarea>
+<button id="send">Send</button>
+<div id="chatlog" class="chatlog"></div>
+<script>
+const chatlog = document.getElementById('chatlog');
+
+const addMessage = (role, text) => {
+  const p = document.createElement('p');
+  p.textContent = `${role}: ${text}`;
+  chatlog.appendChild(p);
+};
+
+document.getElementById('send').onclick = async () => {
+  const message = document.getElementById('message').value.trim();
+  if (!message) {
+    addMessage('System', 'message is required');
+    return;
+  }
+
+  const response = await fetch('/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      session_id: document.getElementById('session').value || 'web-user-session',
+      subsystem: 'Auto',
+      message,
+      player_context: {},
+      world_context: {},
+    }),
+  });
+
+  const data = await response.json();
+  addMessage('You', message);
+  addMessage('A.E.T.H.E.R', data.text || data.detail || 'No response text');
+  document.getElementById('message').value = '';
+};
+</script>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html)
 
 
 @app.get("/version", response_model=VersionResponse)
