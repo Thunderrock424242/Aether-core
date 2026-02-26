@@ -30,3 +30,14 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_PORT=8765` to change the API port.
 - `AETHER_ACTIVATION_HOOK_ENABLED=true` to require mod lifecycle activation before `/generate` responds.
 - `AETHER_LEARNING_LESSON_LIMIT=16` to control how many user-taught facts are retained per session.
+
+## Teaching playground shortcut
+Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to teach a lesson.
+
+```bash
+./scripts/teach_lesson.sh -s player-uuid -l "I am building Minecraft NeoForge mods with Gradle."
+```
+
+```powershell
+.\scripts\teach_lesson.ps1 -SessionId player-uuid -Lesson "I am building Minecraft NeoForge mods with Gradle."
+```
