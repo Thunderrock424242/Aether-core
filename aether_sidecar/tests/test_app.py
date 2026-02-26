@@ -12,6 +12,12 @@ learning = app_module.learning
 client = TestClient(app)
 
 
+class FakeBackend:
+    async def generate(self, prompt: str, subsystem):
+        scope = "general" if "Request scope: general-conversation" in prompt else "minecraft"
+        return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}"
+
+
 def setup_function() -> None:
     activation_registry.active_instances.clear()
     learning._lessons.clear()
@@ -39,7 +45,25 @@ def test_generate_returns_keyword_alerts():
     assert body["subsystem_used"] == "Eclipse"
     assert "Eclipse" in body["subsystem_alerts"]
     assert "anomaly" in body["subsystem_alerts"]["Eclipse"]
-    assert body["model_used"] == "aether-template-v1"
+    assert body["model_used"] == "fake-eclipse"
+    assert "[minecraft]" in body["text"]
+
+
+def test_generate_non_minecraft_message_returns_aether_smalltalk_reply():
+    response = client.post(
+        "/generate",
+        json={
+            "message": "How are you today?",
+            "subsystem": "Auto",
+            "session_id": "test-session-smalltalk",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subsystem_used"] == "Aegis"
+    assert body["model_used"] == "fake-aegis"
+    assert "[general]" in body["text"]
 
 
 def test_metrics_endpoint_available():

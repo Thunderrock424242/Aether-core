@@ -10,7 +10,7 @@ This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/
 - Bounded session memory
 - Teachable per-session learning notes for user preferences/facts
 - Safety pre-check + refusal behavior
-- Pluggable backend (`template` and `ollama`)
+- Ollama backend (`ollama`)
 - Optional per-subsystem model routing (`AETHER_SUBSYSTEM_MODELS`) for specialist sub-models
 - Unit tests for routing/safety/app endpoints
 

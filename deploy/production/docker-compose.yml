@@ -8,8 +8,8 @@ services:
     volumes:
       - ../../:/app
     environment:
-      - AETHER_MODEL_BACKEND=${AETHER_MODEL_BACKEND:-template}
-      - AETHER_MODEL_NAME=${AETHER_MODEL_NAME:-aether-template-v1}
+      - AETHER_MODEL_BACKEND=${AETHER_MODEL_BACKEND:-ollama}
+      - AETHER_MODEL_NAME=${AETHER_MODEL_NAME:-aether-ollama-v1}
       - AETHER_OLLAMA_URL=${AETHER_OLLAMA_URL:-http://host.docker.internal:11434/api/generate}
     command: bash -lc "pip install -e ./aether_sidecar && python ./aether_sidecar/run.py"
     ports:

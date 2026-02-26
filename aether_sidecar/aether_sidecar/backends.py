@@ -17,23 +17,6 @@ class BaseBackend:
         raise NotImplementedError
 
 
-class TemplateBackend(BaseBackend):
-    def __init__(self, default_model_name: str, subsystem_models: dict[Subsystem, str] | None = None):
-        self.default_model_name = default_model_name
-        self.subsystem_models = subsystem_models or {}
-
-    def model_for_subsystem(self, subsystem: Subsystem) -> str:
-        return self.subsystem_models.get(subsystem, self.default_model_name)
-
-    async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
-        model_name = self.model_for_subsystem(subsystem)
-        text = (
-            f"[{subsystem.value}/{model_name}] A.E.T.H.E.R response: {prompt[:180]}\n"
-            "Actionable next step: gather resources, check hazards, and proceed with caution."
-        )
-        return text, model_name
-
-
 class OllamaBackend(BaseBackend):
     def __init__(
         self,
