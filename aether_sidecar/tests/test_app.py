@@ -12,6 +12,8 @@ def setup_function() -> None:
     learning._lessons.clear()
     settings.activation_hook_enabled = False
     settings.activation_hook_token = None
+    settings.dev_playground_enabled = False
+    settings.dev_playground_token = None
 
 
 def test_generate_returns_keyword_alerts():
@@ -125,3 +127,59 @@ def test_generate_includes_learned_context():
 
     assert response.status_code == 200
     assert response.json()["learned_context"] == ["I am building NeoForge mods with Gradle."]
+
+
+def test_dev_playground_disabled_by_default():
+    response = client.get("/dev/playground")
+    assert response.status_code == 404
+
+
+def test_dev_playground_page_enabled():
+    settings.dev_playground_enabled = True
+    response = client.get("/dev/playground")
+    assert response.status_code == 200
+    assert "A.E.T.H.E.R Dev Playground" in response.text
+
+
+def test_playground_token_required_for_generate_teach_learning():
+    settings.dev_playground_token = "secret"
+
+    teach_denied = client.post(
+        "/teach",
+        json={"lesson": "Use concise answers.", "session_id": "token-test"},
+    )
+    assert teach_denied.status_code == 401
+
+    teach_allowed = client.post(
+        "/teach",
+        headers={"Authorization": "Bearer secret"},
+        json={"lesson": "Use concise answers.", "session_id": "token-test"},
+    )
+    assert teach_allowed.status_code == 200
+
+    learning_denied = client.get("/learning/token-test")
+    assert learning_denied.status_code == 401
+
+    learning_allowed = client.get("/learning/token-test", headers={"Authorization": "Bearer secret"})
+    assert learning_allowed.status_code == 200
+
+    generate_denied = client.post(
+        "/generate",
+        json={
+            "message": "hello",
+            "subsystem": "Auto",
+            "session_id": "token-test",
+        },
+    )
+    assert generate_denied.status_code == 401
+
+    generate_allowed = client.post(
+        "/generate",
+        headers={"Authorization": "Bearer secret"},
+        json={
+            "message": "hello",
+            "subsystem": "Auto",
+            "session_id": "token-test",
+        },
+    )
+    assert generate_allowed.status_code == 200

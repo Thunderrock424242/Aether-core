@@ -19,6 +19,11 @@ This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/
 ./scripts/run_sidecar_dev.sh
 ```
 
+PowerShell:
+```powershell
+.\scripts\run_sidecar_dev.ps1
+```
+
 The dev script now bootstraps/reuses `.venv`, installs dependencies, and runs Uvicorn with hot reload by default.
 
 ## NeoForge integration payload
@@ -47,6 +52,14 @@ The dev script now bootstraps/reuses `.venv`, installs dependencies, and runs Uv
 
 
 ## Teachable learning playground API
+Dev-only browser UI endpoint: `GET /dev/playground` (disabled unless `AETHER_DEV_PLAYGROUND_ENABLED=true`).
+
+Enable from PowerShell:
+```powershell
+$env:AETHER_DEV_PLAYGROUND_ENABLED = "true"
+.\scripts\run_sidecar_dev.ps1
+```
+
 Use `POST /teach` to store facts/preferences per session.
 
 ```json
@@ -58,6 +71,8 @@ POST /teach
 ```
 
 Read stored lessons with `GET /learning/{session_id}`. These notes are injected into `/generate` prompts and echoed back as `learned_context` in responses.
+
+If `AETHER_DEV_PLAYGROUND_TOKEN` is set, send it as `Authorization: Bearer <token>` for `/generate`, `/teach`, and `/learning/{session_id}`.
 
 ## Mod lifecycle activation hook (for bundled Java mods)
 When `AETHER_ACTIVATION_HOOK_ENABLED=true`, the sidecar requires at least one active mod instance before `/generate` will respond.

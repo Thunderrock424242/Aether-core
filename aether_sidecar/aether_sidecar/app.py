@@ -1,12 +1,15 @@
 import time
 from dataclasses import dataclass, field
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 
 from .backends import OllamaBackend, TemplateBackend
 from .config import parse_subsystem_models, settings
 from .memory import SessionLearning, SessionMemory
 from .models import (
+    DevPlaygroundAuthRequest,
+    DevPlaygroundAuthResponse,
     GenerateRequest,
     GenerateResponse,
     HealthResponse,
@@ -65,6 +68,24 @@ def _validate_hook_token(token: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid hook token")
 
 
+def _validate_dev_playground_enabled() -> None:
+    if not settings.dev_playground_enabled:
+        raise HTTPException(status_code=404, detail="dev playground is disabled")
+
+
+def _validate_dev_playground_token(token: str | None) -> None:
+    expected = settings.dev_playground_token
+    if not expected:
+        return
+
+    provided = (token or "").strip()
+    if provided.lower().startswith("bearer "):
+        provided = provided[7:].strip()
+
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="invalid playground token")
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(model_backend=settings.model_backend, model_name=settings.model_name)
@@ -103,19 +124,124 @@ async def metrics():
     return metrics_response()
 
 
+@app.get("/dev/playground", response_class=HTMLResponse)
+async def dev_playground() -> HTMLResponse:
+    _validate_dev_playground_enabled()
+
+    html = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>A.E.T.H.E.R Dev Playground</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 2rem auto; max-width: 860px; padding: 0 1rem; }
+    fieldset { margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+    label { display: block; margin-top: .6rem; font-weight: 600; }
+    input, select, textarea, button { width: 100%; margin-top: .2rem; padding: .55rem; font: inherit; }
+    button { cursor: pointer; }
+    .row { display: grid; gap: .8rem; grid-template-columns: 1fr 1fr; }
+    pre { background: #111; color: #eee; padding: .8rem; border-radius: 8px; overflow: auto; min-height: 120px; }
+  </style>
+</head>
+<body>
+  <h1>A.E.T.H.E.R Dev Playground</h1>
+  <p>Dev-only UI for teaching and chatting against the sidecar.</p>
+
+  <fieldset>
+    <legend>Session + auth</legend>
+    <label>Session ID</label><input id="session" value="dev-session">
+    <label>Bearer token (optional)</label><input id="token" placeholder="only needed if configured">
+  </fieldset>
+
+  <fieldset>
+    <legend>Teach</legend>
+    <label>Lesson</label><textarea id="lesson" rows="3" placeholder="This model guides NeoForge mod architecture..."></textarea>
+    <button id="teachBtn">Save lesson</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Chat</legend>
+    <div class="row">
+      <div><label>Subsystem</label><select id="subsystem"><option>Auto</option><option>Aegis</option><option>Eclipse</option><option>Terra</option><option>Helios</option><option>Enforcer</option><option>Requiem</option></select></div>
+      <div><label>Message</label><input id="message" placeholder="Ask the model..."></div>
+    </div>
+    <button id="chatBtn">Send</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Learning state</legend>
+    <button id="loadLessons">Load lessons</button>
+  </fieldset>
+
+  <pre id="output"></pre>
+
+<script>
+const out = document.getElementById('output');
+const headers = () => {
+  const token = document.getElementById('token').value.trim();
+  const h = {'Content-Type': 'application/json'};
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  return h;
+};
+const sid = () => document.getElementById('session').value.trim();
+const show = (label, data) => { out.textContent = `${label}\n` + JSON.stringify(data, null, 2); };
+
+document.getElementById('teachBtn').onclick = async () => {
+  const lesson = document.getElementById('lesson').value.trim();
+  const r = await fetch('/teach', {method:'POST', headers: headers(), body: JSON.stringify({session_id: sid(), lesson})});
+  show('POST /teach', await r.json());
+};
+
+document.getElementById('chatBtn').onclick = async () => {
+  const body = {
+    session_id: sid(),
+    subsystem: document.getElementById('subsystem').value,
+    message: document.getElementById('message').value,
+    player_context: {},
+    world_context: {},
+  };
+  const r = await fetch('/generate', {method:'POST', headers: headers(), body: JSON.stringify(body)});
+  show('POST /generate', await r.json());
+};
+
+document.getElementById('loadLessons').onclick = async () => {
+  const r = await fetch(`/learning/${encodeURIComponent(sid())}`, {headers: headers()});
+  show('GET /learning', await r.json());
+};
+</script>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html)
+
+
+@app.post("/dev/playground/auth", response_model=DevPlaygroundAuthResponse)
+async def dev_playground_auth(
+    payload: DevPlaygroundAuthRequest,
+) -> DevPlaygroundAuthResponse:
+    _validate_dev_playground_enabled()
+    _validate_dev_playground_token(payload.token)
+    return DevPlaygroundAuthResponse()
+
+
 @app.post("/teach", response_model=TeachResponse)
-async def teach(payload: TeachRequest) -> TeachResponse:
+async def teach(payload: TeachRequest, authorization: str | None = Header(default=None)) -> TeachResponse:
+    _validate_dev_playground_token(authorization)
     learning.teach(payload.session_id, payload.lesson.strip())
     return TeachResponse(lessons_count=len(learning.lessons(payload.session_id)))
 
 
 @app.get("/learning/{session_id}", response_model=LearningStatusResponse)
-async def learning_status(session_id: str) -> LearningStatusResponse:
+async def learning_status(session_id: str, authorization: str | None = Header(default=None)) -> LearningStatusResponse:
+    _validate_dev_playground_token(authorization)
     return LearningStatusResponse(session_id=session_id, lessons=learning.lessons(session_id))
 
 
 @app.post("/generate", response_model=GenerateResponse)
-async def generate(payload: GenerateRequest) -> GenerateResponse:
+async def generate(payload: GenerateRequest, authorization: str | None = Header(default=None)) -> GenerateResponse:
+    _validate_dev_playground_token(authorization)
     started = time.perf_counter()
 
     if not activation_registry.is_active():
