@@ -17,6 +17,8 @@ from .models import (
     LearningStatusResponse,
     ModLifecycleHookRequest,
     ModLifecycleHookResponse,
+    ModelStatusResponse,
+    StatusResponse,
     Subsystem,
     TeachRequest,
     TeachResponse,
@@ -64,6 +66,9 @@ backend = OllamaBackend(
 )
 
 
+started_at = time.monotonic()
+
+
 def _validate_hook_token(token: str | None) -> None:
     if settings.activation_hook_token and token != settings.activation_hook_token:
         raise HTTPException(status_code=401, detail="invalid hook token")
@@ -85,6 +90,40 @@ def _validate_dev_playground_token(token: str | None) -> None:
 
     if provided != expected:
         raise HTTPException(status_code=401, detail="invalid playground token")
+
+
+@app.get("/status", response_model=StatusResponse)
+async def status() -> StatusResponse:
+    status_start = time.perf_counter()
+    try:
+        checked_model = await backend.warmup(Subsystem.AEGIS)
+        model_status = ModelStatusResponse(
+            status="online",
+            checked_model=checked_model,
+            latency_ms=int((time.perf_counter() - status_start) * 1000),
+        )
+    except BackendUnavailableError as exc:
+        model_status = ModelStatusResponse(
+            status="offline",
+            detail=str(exc),
+            checked_model=settings.model_name,
+            latency_ms=int((time.perf_counter() - status_start) * 1000),
+        )
+
+    return StatusResponse(
+        model_backend=settings.model_backend,
+        model_name=settings.model_name,
+        keep_alive=settings.ollama_keep_alive,
+        uptime_seconds=int(time.monotonic() - started_at),
+        activation_required=settings.activation_hook_enabled,
+        active_instances=activation_registry.status(),
+        model=model_status,
+    )
+
+
+@app.get("/heath")
+async def heath_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/status", status_code=307)
 
 
 @app.get("/health", response_model=HealthResponse)

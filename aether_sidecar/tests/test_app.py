@@ -85,6 +85,33 @@ def test_health_returns_keep_alive_setting():
     assert response.json()["keep_alive"] == "30m"
 
 
+
+
+def test_status_reports_model_online_with_runtime_details():
+    response = client.get("/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["model"]["status"] == "online"
+    assert body["model"]["checked_model"] == "fake-aegis"
+    assert body["uptime_seconds"] >= 0
+
+
+def test_status_reports_model_offline_when_backend_unavailable():
+    class BrokenBackend:
+        async def warmup(self, subsystem):
+            raise BackendUnavailableError("backend down")
+
+    app_module.backend = BrokenBackend()
+
+    response = client.get("/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model"]["status"] == "offline"
+    assert body["model"]["detail"] == "backend down"
+
 def test_backend_warmup_endpoint_returns_ready():
     response = client.post("/backend/warmup", params={"subsystem": "Terra"})
 
@@ -325,3 +352,10 @@ def test_warmup_returns_503_when_model_backend_unavailable():
 
     assert response.status_code == 503
     assert response.json()["detail"] == "backend offline"
+
+
+def test_heath_redirects_to_status():
+    response = client.get("/heath", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/status"

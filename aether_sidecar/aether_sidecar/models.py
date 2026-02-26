@@ -87,6 +87,24 @@ class HealthResponse(BaseModel):
     keep_alive: str
 
 
+class ModelStatusResponse(BaseModel):
+    status: Literal["online", "offline"]
+    detail: str | None = None
+    checked_model: str
+    latency_ms: int | None = None
+
+
+class StatusResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    model_backend: str
+    model_name: str
+    keep_alive: str
+    uptime_seconds: int
+    activation_required: bool
+    active_instances: list[str] = Field(default_factory=list)
+    model: ModelStatusResponse
+
+
 class WarmupResponse(BaseModel):
     status: Literal["ready"] = "ready"
     model_name: str
