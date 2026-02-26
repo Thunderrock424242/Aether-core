@@ -160,6 +160,11 @@ async def dev_playground() -> HTMLResponse:
     button { cursor: pointer; }
     .row { display: grid; gap: .8rem; grid-template-columns: 1fr 1fr; }
     pre { background: #111; color: #eee; padding: .8rem; border-radius: 8px; overflow: auto; min-height: 120px; }
+    .chatlog { background: #0d1117; color: #e6edf3; padding: .8rem; border-radius: 8px; min-height: 120px; }
+    .chatlog p { margin: .4rem 0; white-space: pre-wrap; }
+    .muted { font-size: .9rem; color: #666; }
+    .inline { display: flex; align-items: center; gap: .5rem; margin-top: .7rem; }
+    .inline input[type=checkbox] { width: auto; margin: 0; }
   </style>
 </head>
 <body>
@@ -184,7 +189,16 @@ async def dev_playground() -> HTMLResponse:
       <div><label>Subsystem</label><select id="subsystem"><option>Auto</option><option>Aegis</option><option>Eclipse</option><option>Terra</option><option>Helios</option><option>Enforcer</option><option>Requiem</option></select></div>
       <div><label>Message</label><input id="message" placeholder="Ask the model..."></div>
     </div>
+    <div class="inline">
+      <input id="teachBeforeChat" type="checkbox">
+      <label for="teachBeforeChat">Teach the current message before sending it to chat</label>
+    </div>
     <button id="chatBtn">Send</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Conversation</legend>
+    <div class="chatlog" id="chatlog"><p class="muted">No messages yet.</p></div>
   </fieldset>
 
   <fieldset>
@@ -204,6 +218,30 @@ const headers = () => {
 };
 const sid = () => document.getElementById('session').value.trim();
 const show = (label, data) => { out.textContent = `${label}\n` + JSON.stringify(data, null, 2); };
+const chatlog = document.getElementById('chatlog');
+let hasMessages = false;
+
+const addMessage = (role, text) => {
+  if (!hasMessages) {
+    chatlog.innerHTML = '';
+    hasMessages = true;
+  }
+  const p = document.createElement('p');
+  p.textContent = `${role}: ${text}`;
+  chatlog.appendChild(p);
+};
+
+const maybeTeachFromChatMessage = async (message) => {
+  if (!document.getElementById('teachBeforeChat').checked) {
+    return;
+  }
+  const teachResponse = await fetch('/teach', {
+    method:'POST',
+    headers: headers(),
+    body: JSON.stringify({session_id: sid(), lesson: message})
+  });
+  show('POST /teach (from chat)', await teachResponse.json());
+};
 
 document.getElementById('teachBtn').onclick = async () => {
   const lesson = document.getElementById('lesson').value.trim();
@@ -212,15 +250,27 @@ document.getElementById('teachBtn').onclick = async () => {
 };
 
 document.getElementById('chatBtn').onclick = async () => {
+  const message = document.getElementById('message').value.trim();
+  if (!message) {
+    show('validation', {detail: 'message is required'});
+    return;
+  }
+
+  await maybeTeachFromChatMessage(message);
   const body = {
     session_id: sid(),
     subsystem: document.getElementById('subsystem').value,
-    message: document.getElementById('message').value,
+    message,
     player_context: {},
     world_context: {},
   };
   const r = await fetch('/generate', {method:'POST', headers: headers(), body: JSON.stringify(body)});
-  show('POST /generate', await r.json());
+  const data = await r.json();
+  show('POST /generate', data);
+  addMessage('Player', message);
+  if (data.text) {
+    addMessage('A.E.T.H.E.R', data.text);
+  }
 };
 
 document.getElementById('loadLessons').onclick = async () => {

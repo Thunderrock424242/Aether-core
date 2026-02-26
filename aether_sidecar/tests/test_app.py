@@ -192,6 +192,8 @@ def test_dev_playground_page_enabled():
     response = client.get("/dev/playground")
     assert response.status_code == 200
     assert "A.E.T.H.E.R Dev Playground" in response.text
+    assert "Teach the current message before sending it to chat" in response.text
+    assert "Conversation" in response.text
 
 
 def test_playground_token_required_for_generate_teach_learning():
