@@ -71,3 +71,17 @@ $env:AETHER_DEV_PLAYGROUND_ENABLED = "true"
 $env:AETHER_DEV_PLAYGROUND_TOKEN = "dev-secret"
 .\scripts\run_sidecar_dev.ps1
 ```
+
+## Troubleshooting common local responses
+- `GET /` returning `404 Not Found` is expected. The sidecar does not expose a root route; use `/health`, `/version`, or `/dev/playground` (when enabled) instead.
+- `POST /generate` returning `503 Service Unavailable` usually means one of these:
+  - Activation gating is enabled (`AETHER_ACTIVATION_HOOK_ENABLED=true`) and no active mod instance has called `/hooks/mod-lifecycle` with `action=activate`.
+  - The Ollama backend is unreachable or the model is unavailable (check `AETHER_OLLAMA_URL`, ensure `ollama serve` is running, and confirm the configured `AETHER_MODEL_NAME` is pulled).
+
+Quick checks:
+
+```bash
+curl -s http://127.0.0.1:8765/health
+curl -s http://127.0.0.1:8765/hooks/status
+curl -s http://127.0.0.1:11434/api/tags
+```

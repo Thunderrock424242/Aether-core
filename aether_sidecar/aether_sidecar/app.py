@@ -185,12 +185,38 @@ const headers = () => {
   return h;
 };
 const sid = () => document.getElementById('session').value.trim();
-const show = (label, data) => { out.textContent = `${label}\n` + JSON.stringify(data, null, 2); };
+const show = (label, data) => { out.textContent = `${label}
+` + JSON.stringify(data, null, 2); };
+
+const parsePayload = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {raw: text};
+  }
+};
+
+const showApiResult = async (label, response) => {
+  const payload = await parsePayload(response);
+  const result = {status: response.status, ok: response.ok, payload};
+
+  if (!response.ok && response.status === 503 && label.includes('/generate')) {
+    result.hint = [
+      'If activation gating is enabled, call POST /hooks/mod-lifecycle with action=activate.',
+      'If activation is not required, verify Ollama is reachable and the configured model exists.',
+    ];
+  }
+
+  show(label, result);
+};
 
 document.getElementById('teachBtn').onclick = async () => {
   const lesson = document.getElementById('lesson').value.trim();
   const r = await fetch('/teach', {method:'POST', headers: headers(), body: JSON.stringify({session_id: sid(), lesson})});
-  show('POST /teach', await r.json());
+  await showApiResult('POST /teach', r);
 };
 
 document.getElementById('chatBtn').onclick = async () => {
@@ -202,12 +228,12 @@ document.getElementById('chatBtn').onclick = async () => {
     world_context: {},
   };
   const r = await fetch('/generate', {method:'POST', headers: headers(), body: JSON.stringify(body)});
-  show('POST /generate', await r.json());
+  await showApiResult('POST /generate', r);
 };
 
 document.getElementById('loadLessons').onclick = async () => {
   const r = await fetch(`/learning/${encodeURIComponent(sid())}`, {headers: headers()});
-  show('GET /learning', await r.json());
+  await showApiResult('GET /learning', r);
 };
 </script>
 </body>
