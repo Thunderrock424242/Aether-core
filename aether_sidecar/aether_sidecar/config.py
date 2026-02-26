@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     model_backend: str = "ollama"
     model_name: str = "llama3.1:8b"
     request_timeout_seconds: float = 20.0
+    ollama_connect_timeout_seconds: float = 5.0
+    ollama_max_retries: int = 3
+    ollama_retry_base_backoff_seconds: float = 0.25
+    ollama_retry_max_backoff_seconds: float = 2.0
     max_message_chars: int = 800
     memory_turn_limit: int = 6
     learning_lesson_limit: int = 16

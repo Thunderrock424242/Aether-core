@@ -59,6 +59,10 @@ backend = OllamaBackend(
     settings.model_name,
     settings.request_timeout_seconds,
     subsystem_models=subsystem_models,
+    connect_timeout_seconds=settings.ollama_connect_timeout_seconds,
+    max_retries=settings.ollama_max_retries,
+    retry_base_backoff_seconds=settings.ollama_retry_base_backoff_seconds,
+    retry_max_backoff_seconds=settings.ollama_retry_max_backoff_seconds,
 )
 
 

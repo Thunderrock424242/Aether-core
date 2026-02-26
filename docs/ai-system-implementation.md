@@ -27,6 +27,22 @@ PowerShell:
 
 The dev script now bootstraps/reuses `.venv`, installs dependencies, and runs Uvicorn with hot reload by default.
 
+## Making Ollama reliable on user/dev machines
+To keep local inference stable whenever Ollama is running, use these defaults:
+
+- Ensure Ollama is started before sidecar startup (`ollama serve`) and keep it as a background service where possible.
+- Prefer loopback URLs (`http://127.0.0.1:11434/api/generate`) on non-container installs.
+- Configure retries/backoff in sidecar:
+  - `AETHER_OLLAMA_MAX_RETRIES` (default `3`)
+  - `AETHER_OLLAMA_RETRY_BASE_BACKOFF_SECONDS` (default `0.25`)
+  - `AETHER_OLLAMA_RETRY_MAX_BACKOFF_SECONDS` (default `2.0`)
+  - `AETHER_OLLAMA_CONNECT_TIMEOUT_SECONDS` (default `5.0`)
+- Keep a slightly larger end-to-end request timeout for larger models via `AETHER_REQUEST_TIMEOUT_SECONDS` (default `20.0`).
+- Pre-pull required models (`ollama pull <model>`) so the first request does not fail while pulling.
+- Validate health before gameplay sessions with `curl http://127.0.0.1:8765/health` and a quick `POST /generate` smoke test.
+
+These settings make transient connection errors (startup races, brief socket resets, local CPU pressure) automatically recover without user-visible failures.
+
 ## NeoForge integration payload
 ```json
 {
