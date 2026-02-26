@@ -21,6 +21,7 @@ from .models import (
     TeachRequest,
     TeachResponse,
     VersionResponse,
+    WarmupResponse,
 )
 from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
 from .router import detect_subsystem_alerts, is_minecraft_related, pick_subsystem, subsystem_teaching_context
@@ -59,6 +60,7 @@ backend = OllamaBackend(
     settings.model_name,
     settings.request_timeout_seconds,
     subsystem_models=subsystem_models,
+    keep_alive=settings.ollama_keep_alive,
 )
 
 
@@ -87,7 +89,11 @@ def _validate_dev_playground_token(token: str | None) -> None:
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(model_backend=settings.model_backend, model_name=settings.model_name)
+    return HealthResponse(
+        model_backend=settings.model_backend,
+        model_name=settings.model_name,
+        keep_alive=settings.ollama_keep_alive,
+    )
 
 
 @app.get("/version", response_model=VersionResponse)
@@ -116,6 +122,18 @@ async def mod_lifecycle_hook(payload: ModLifecycleHookRequest) -> ModLifecycleHo
         activation_required=settings.activation_hook_enabled,
         active_instances=activation_registry.status(),
     )
+
+
+
+
+@app.post("/backend/warmup", response_model=WarmupResponse)
+async def backend_warmup(subsystem: Subsystem = Subsystem.AEGIS) -> WarmupResponse:
+    try:
+        model_name = await backend.warmup(subsystem)
+    except BackendUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return WarmupResponse(model_name=model_name, subsystem=subsystem)
 
 
 @app.get("/metrics")

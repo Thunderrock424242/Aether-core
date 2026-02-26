@@ -84,6 +84,13 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     model_backend: str
     model_name: str
+    keep_alive: str
+
+
+class WarmupResponse(BaseModel):
+    status: Literal["ready"] = "ready"
+    model_name: str
+    subsystem: Subsystem
 
 
 class VersionResponse(BaseModel):

@@ -13,6 +13,9 @@ client = TestClient(app)
 
 
 class FakeBackend:
+    async def warmup(self, subsystem):
+        return f"fake-{subsystem.value.lower()}"
+
     async def generate(self, prompt: str, subsystem):
         scope = "general" if "Request scope: general-conversation" in prompt else "minecraft"
         return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}"
@@ -25,6 +28,7 @@ def setup_function() -> None:
     settings.activation_hook_token = None
     settings.dev_playground_enabled = False
     settings.dev_playground_token = None
+    settings.ollama_keep_alive = "15m"
     app_module.backend = FakeBackend()
 
 
@@ -70,6 +74,25 @@ def test_metrics_endpoint_available():
     response = client.get("/metrics")
     assert response.status_code == 200
     assert "aether_http_requests_total" in response.text
+
+
+def test_health_returns_keep_alive_setting():
+    settings.ollama_keep_alive = "30m"
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["keep_alive"] == "30m"
+
+
+def test_backend_warmup_endpoint_returns_ready():
+    response = client.post("/backend/warmup", params={"subsystem": "Terra"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["model_name"] == "fake-terra"
+    assert body["subsystem"] == "Terra"
 
 
 def test_activation_hook_lifecycle_blocks_until_activated():
@@ -217,6 +240,9 @@ def test_playground_token_required_for_generate_teach_learning():
 
 def test_generate_returns_503_when_model_backend_unavailable():
     class DownBackend:
+        async def warmup(self, subsystem):
+            raise BackendUnavailableError("backend offline")
+
         async def generate(self, prompt: str, subsystem):
             raise BackendUnavailableError("backend offline")
 
@@ -230,6 +256,22 @@ def test_generate_returns_503_when_model_backend_unavailable():
             "session_id": "backend-down",
         },
     )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "backend offline"
+
+
+def test_warmup_returns_503_when_model_backend_unavailable():
+    class DownBackend:
+        async def warmup(self, subsystem):
+            raise BackendUnavailableError("backend offline")
+
+        async def generate(self, prompt: str, subsystem):
+            raise BackendUnavailableError("backend offline")
+
+    app_module.backend = DownBackend()
+
+    response = client.post("/backend/warmup")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "backend offline"

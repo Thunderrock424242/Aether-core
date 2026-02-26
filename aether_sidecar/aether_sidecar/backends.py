@@ -13,6 +13,9 @@ SYSTEM_PROMPTS = {
 
 
 class BaseBackend:
+    async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
+        raise NotImplementedError
+
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
         raise NotImplementedError
 
@@ -28,24 +31,50 @@ class OllamaBackend(BaseBackend):
         model_name: str,
         timeout_seconds: float = 20.0,
         subsystem_models: dict[Subsystem, str] | None = None,
+        keep_alive: str = "15m",
     ):
         self.base_url = base_url
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.subsystem_models = subsystem_models or {}
+        self.keep_alive = keep_alive
 
     def model_for_subsystem(self, subsystem: Subsystem) -> str:
         return self.subsystem_models.get(subsystem, self.model_name)
+
+    async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
+        model_name = self.model_for_subsystem(subsystem)
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(
+                    self.base_url,
+                    json={
+                        "model": model_name,
+                        "prompt": "Warmup request. Reply with: ready.",
+                        "stream": False,
+                        "keep_alive": self.keep_alive,
+                    },
+                )
+                resp.raise_for_status()
+            return model_name
+        except httpx.RequestError as exc:
+            raise BackendUnavailableError(
+                f"Failed to contact model backend at {self.base_url}: {exc}"
+            ) from exc
 
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
         model_name = self.model_for_subsystem(subsystem)
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                resp = await client.post(self.base_url, json={
-                    "model": model_name,
-                    "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
-                    "stream": False,
-                })
+                resp = await client.post(
+                    self.base_url,
+                    json={
+                        "model": model_name,
+                        "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
+                        "stream": False,
+                        "keep_alive": self.keep_alive,
+                    },
+                )
                 resp.raise_for_status()
                 data = resp.json()
                 text = (data.get("response") or "").strip() or "No model response."

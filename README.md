@@ -33,6 +33,7 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_LEARNING_LOG_PATH=.aether/learning_lessons.jsonl` to persist playground teaching lessons across sidecar restarts.
 - `AETHER_DEV_PLAYGROUND_ENABLED=false` keeps the dev-only browser playground disabled by default.
 - `AETHER_DEV_PLAYGROUND_TOKEN=` optional bearer token required by `/generate`, `/teach`, and `/learning/*` when set.
+- `AETHER_OLLAMA_KEEP_ALIVE=15m` keeps models warm in Ollama so first-token latency stays low during idle periods.
 
 ## Teaching playground shortcut
 Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to teach a lesson.
@@ -71,3 +72,13 @@ $env:AETHER_DEV_PLAYGROUND_ENABLED = "true"
 $env:AETHER_DEV_PLAYGROUND_TOKEN = "dev-secret"
 .\scripts\run_sidecar_dev.ps1
 ```
+
+
+## Backend warmup endpoint
+To proactively keep a subsystem model loaded (idle but ready), call:
+
+```bash
+curl -X POST "http://127.0.0.1:8765/backend/warmup?subsystem=Terra"
+```
+
+This hits Ollama with `keep_alive` so the model stays resident for the configured window (`AETHER_OLLAMA_KEEP_ALIVE`).
