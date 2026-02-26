@@ -23,7 +23,7 @@ from .models import (
     VersionResponse,
 )
 from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
-from .router import detect_subsystem_alerts, pick_subsystem
+from .router import detect_subsystem_alerts, pick_subsystem, subsystem_teaching_context
 from .safety import evaluate_message, safe_refusal
 
 
@@ -273,9 +273,11 @@ async def generate(payload: GenerateRequest, authorization: str | None = Header(
 
     history_text = "\n".join(f"{x['role']}: {x['text']}" for x in memory.history(payload.session_id)[-6:])
     lesson_text = "\n".join(f"- {lesson}" for lesson in learned_context)
+    subsystem_training = subsystem_teaching_context(subsystem)
     full_prompt = (
         f"Session: {payload.session_id}\n"
         f"Subsystem: {subsystem.value}\n"
+        f"Subsystem teaching profile: {subsystem_training}\n"
         f"Detected keyword alerts: { {k.value: v for k, v in alerts.items()} }\n"
         f"Player context: {payload.player_context}\n"
         f"World context: {payload.world_context}\n"
