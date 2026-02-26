@@ -212,7 +212,7 @@ async def dev_playground() -> HTMLResponse:
 const out = document.getElementById('output');
 const headers = () => {
   const token = document.getElementById('token').value.trim();
-  const h = {'Content-Type': 'application/json'};
+  const h = {'Content-Type': 'application/json', 'X-Aether-Dev-Playground': 'true'};
   if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
 };
@@ -307,11 +307,16 @@ async def learning_status(session_id: str, authorization: str | None = Header(de
 
 
 @app.post("/generate", response_model=GenerateResponse)
-async def generate(payload: GenerateRequest, authorization: str | None = Header(default=None)) -> GenerateResponse:
+async def generate(
+    payload: GenerateRequest,
+    authorization: str | None = Header(default=None),
+    x_aether_dev_playground: str | None = Header(default=None),
+) -> GenerateResponse:
     _validate_dev_playground_token(authorization)
     started = time.perf_counter()
+    dev_playground_bypass = settings.dev_playground_enabled and (x_aether_dev_playground or "").strip().lower() == "true"
 
-    if not activation_registry.is_active():
+    if not activation_registry.is_active() and not dev_playground_bypass:
         raise HTTPException(
             status_code=503,
             detail="AETHER activation required: call /hooks/mod-lifecycle with action=activate",
