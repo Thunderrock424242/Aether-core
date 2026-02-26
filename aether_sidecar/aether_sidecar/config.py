@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     learning_log_path: str | None = None
     safety_enabled: bool = True
     ollama_url: str = "http://127.0.0.1:11434/api/generate"
+    ollama_keep_alive: str = "15m"
     app_version: str = Field(default="0.1.0")
     activation_hook_enabled: bool = False
     activation_hook_token: str | None = None
