@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 
-from .backends import OllamaBackend
+from .backends import BackendUnavailableError, OllamaBackend
 from .config import parse_subsystem_models, settings
 from .memory import SessionLearning, SessionMemory
 from .models import (
@@ -48,7 +48,7 @@ app = FastAPI(title="A.E.T.H.E.R Sidecar", version=settings.app_version)
 app.middleware("http")(metrics_middleware)
 
 memory = SessionMemory(turn_limit=settings.memory_turn_limit)
-learning = SessionLearning(lesson_limit=settings.learning_lesson_limit)
+learning = SessionLearning(lesson_limit=settings.learning_lesson_limit, log_path=settings.learning_log_path)
 activation_registry = ActivationRegistry()
 subsystem_models = parse_subsystem_models(settings.subsystem_models)
 if settings.model_backend.lower() != "ollama":
@@ -289,7 +289,11 @@ async def generate(payload: GenerateRequest, authorization: str | None = Header(
         "Assistant guidance: If the request is not Minecraft-related, respond naturally as A.E.T.H.E.R without refusing."
     )
 
-    text, model_used = await backend.generate(full_prompt, subsystem)
+    try:
+        text, model_used = await backend.generate(full_prompt, subsystem)
+    except BackendUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     memory.append(payload.session_id, "player", message)
     memory.append(payload.session_id, "assistant", text)
     GENERATE_REQUESTS.labels(subsystem.value, "false").inc()

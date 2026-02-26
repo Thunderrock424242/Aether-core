@@ -9,6 +9,7 @@ This repository now includes a runnable, non-Java AI runtime in `aether_sidecar/
 - Subsystem auto-routing based on detected keyword matches
 - Bounded session memory
 - Teachable per-session learning notes for user preferences/facts
+- Optional persisted teaching log (`AETHER_LEARNING_LOG_PATH`) so lessons survive sidecar restarts
 - Safety pre-check + refusal behavior
 - Ollama backend (`ollama`)
 - Optional per-subsystem model routing (`AETHER_SUBSYSTEM_MODELS`) for specialist sub-models
@@ -71,6 +72,7 @@ POST /teach
 ```
 
 Read stored lessons with `GET /learning/{session_id}`. These notes are injected into `/generate` prompts and echoed back as `learned_context` in responses.
+Set `AETHER_LEARNING_LOG_PATH` (for example `.aether/learning_lessons.jsonl`) to append every `POST /teach` lesson as JSONL and reload it when the sidecar starts.
 
 If `AETHER_DEV_PLAYGROUND_TOKEN` is set, send it as `Authorization: Bearer <token>` for `/generate`, `/teach`, and `/learning/{session_id}`.
 
