@@ -1,0 +1,65 @@
+name: Sidecar Website Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  website-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Start sidecar via dev script
+        run: |
+          chmod +x ./scripts/run_sidecar_dev.sh
+          AETHER_DEV_RELOAD=false AETHER_DEV_PLAYGROUND_ENABLED=true ./scripts/run_sidecar_dev.sh > sidecar.log 2>&1 &
+          echo $! > sidecar.pid
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8765/health >/dev/null; then
+              echo "Sidecar is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Sidecar failed to start"
+          cat sidecar.log
+          exit 1
+
+      - name: Verify website routes
+        run: |
+          curl -fsS http://127.0.0.1:8765/generate | grep -q "A.E.T.H.E.R Chat"
+          curl -fsS http://127.0.0.1:8765/dev/playground | grep -q "A.E.T.H.E.R Dev Playground"
+
+      - name: Run sidecar tests
+        working-directory: ./aether_sidecar
+        run: |
+          source .venv/bin/activate
+          pytest
+
+      - name: Stop sidecar
+        if: always()
+        run: |
+          if [ -f sidecar.pid ]; then
+            kill "$(cat sidecar.pid)" || true
+          fi
+
+      - name: Upload sidecar log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-log
+          path: sidecar.log
