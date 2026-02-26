@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 
-from .backends import OllamaBackend, TemplateBackend
+from .backends import OllamaBackend
 from .config import parse_subsystem_models, settings
 from .memory import SessionLearning, SessionMemory
 from .models import (
@@ -23,7 +23,7 @@ from .models import (
     VersionResponse,
 )
 from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
-from .router import detect_subsystem_alerts, pick_subsystem, subsystem_teaching_context
+from .router import detect_subsystem_alerts, is_minecraft_related, pick_subsystem, subsystem_teaching_context
 from .safety import evaluate_message, safe_refusal
 
 
@@ -51,15 +51,14 @@ memory = SessionMemory(turn_limit=settings.memory_turn_limit)
 learning = SessionLearning(lesson_limit=settings.learning_lesson_limit)
 activation_registry = ActivationRegistry()
 subsystem_models = parse_subsystem_models(settings.subsystem_models)
-backend = (
-    OllamaBackend(
-        settings.ollama_url,
-        settings.model_name,
-        settings.request_timeout_seconds,
-        subsystem_models=subsystem_models,
-    )
-    if settings.model_backend.lower() == "ollama"
-    else TemplateBackend(settings.model_name, subsystem_models=subsystem_models)
+if settings.model_backend.lower() != "ollama":
+    raise RuntimeError("Unsupported model backend. Set AETHER_MODEL_BACKEND=ollama.")
+
+backend = OllamaBackend(
+    settings.ollama_url,
+    settings.model_name,
+    settings.request_timeout_seconds,
+    subsystem_models=subsystem_models,
 )
 
 
@@ -258,6 +257,7 @@ async def generate(payload: GenerateRequest, authorization: str | None = Header(
     alerts = detect_subsystem_alerts(message)
     subsystem = payload.subsystem if payload.subsystem != Subsystem.AUTO else pick_subsystem(message)
     learned_context = learning.lessons(payload.session_id)
+    non_minecraft_request = not is_minecraft_related(message)
 
     if safety and safety.blocked:
         GENERATE_REQUESTS.labels(subsystem.value, "true").inc()
@@ -274,8 +274,10 @@ async def generate(payload: GenerateRequest, authorization: str | None = Header(
     history_text = "\n".join(f"{x['role']}: {x['text']}" for x in memory.history(payload.session_id)[-6:])
     lesson_text = "\n".join(f"- {lesson}" for lesson in learned_context)
     subsystem_training = subsystem_teaching_context(subsystem)
+    request_scope = "general-conversation" if non_minecraft_request else "minecraft-subsystem"
     full_prompt = (
         f"Session: {payload.session_id}\n"
+        f"Request scope: {request_scope}\n"
         f"Subsystem: {subsystem.value}\n"
         f"Subsystem teaching profile: {subsystem_training}\n"
         f"Detected keyword alerts: { {k.value: v for k, v in alerts.items()} }\n"
@@ -283,7 +285,8 @@ async def generate(payload: GenerateRequest, authorization: str | None = Header(
         f"World context: {payload.world_context}\n"
         f"Learned preferences/facts:\n{lesson_text}\n"
         f"History:\n{history_text}\n\n"
-        f"Player: {message}"
+        f"Player: {message}\n"
+        "Assistant guidance: If the request is not Minecraft-related, respond naturally as A.E.T.H.E.R without refusing."
     )
 
     text, model_used = await backend.generate(full_prompt, subsystem)

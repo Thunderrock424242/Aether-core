@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AETHER_", env_file=".env", extra="ignore")
     host: str = "127.0.0.1"
     port: int = 8765
-    model_backend: str = "template"
-    model_name: str = "aether-template-v1"
+    model_backend: str = "ollama"
+    model_name: str = "aether-ollama-v1"
     request_timeout_seconds: float = 20.0
     max_message_chars: int = 800
     memory_turn_limit: int = 6

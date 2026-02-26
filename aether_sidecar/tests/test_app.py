@@ -1,10 +1,17 @@
 from fastapi.testclient import TestClient
 
+from aether_sidecar import app as app_module
 from aether_sidecar.app import activation_registry, app, learning
 from aether_sidecar.config import settings
 
 
 client = TestClient(app)
+
+
+class FakeBackend:
+    async def generate(self, prompt: str, subsystem):
+        scope = "general" if "Request scope: general-conversation" in prompt else "minecraft"
+        return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}"
 
 
 def setup_function() -> None:
@@ -14,6 +21,7 @@ def setup_function() -> None:
     settings.activation_hook_token = None
     settings.dev_playground_enabled = False
     settings.dev_playground_token = None
+    app_module.backend = FakeBackend()
 
 
 def test_generate_returns_keyword_alerts():
@@ -33,7 +41,25 @@ def test_generate_returns_keyword_alerts():
     assert body["subsystem_used"] == "Eclipse"
     assert "Eclipse" in body["subsystem_alerts"]
     assert "anomaly" in body["subsystem_alerts"]["Eclipse"]
-    assert body["model_used"] == "aether-template-v1"
+    assert body["model_used"] == "fake-eclipse"
+    assert "[minecraft]" in body["text"]
+
+
+def test_generate_non_minecraft_message_returns_aether_smalltalk_reply():
+    response = client.post(
+        "/generate",
+        json={
+            "message": "How are you today?",
+            "subsystem": "Auto",
+            "session_id": "test-session-smalltalk",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subsystem_used"] == "Aegis"
+    assert body["model_used"] == "fake-aegis"
+    assert "[general]" in body["text"]
 
 
 def test_metrics_endpoint_available():

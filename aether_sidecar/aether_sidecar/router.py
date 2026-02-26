@@ -29,6 +29,21 @@ SUBSYSTEM_PROFILES = {
 
 KEYWORDS = {subsystem: profile["keywords"] for subsystem, profile in SUBSYSTEM_PROFILES.items()}
 
+MINECRAFT_CONTEXT_KEYWORDS = {
+    "minecraft",
+    "neoforge",
+    "mod",
+    "modding",
+    "craft",
+    "creeper",
+    "nether",
+    "enderman",
+    "redstone",
+    "block",
+    "biome",
+    "survival",
+}
+
 
 def subsystem_teaching_context(subsystem: Subsystem) -> str:
     profile = SUBSYSTEM_PROFILES[subsystem]
@@ -56,3 +71,9 @@ def pick_subsystem(message: str) -> Subsystem:
 
     winner = max(alerts, key=lambda subsystem: len(alerts[subsystem]))
     return winner
+
+
+def is_minecraft_related(message: str) -> bool:
+    lowered = message.lower()
+    subsystem_keyword_match = any(word in lowered for words in KEYWORDS.values() for word in words)
+    return subsystem_keyword_match or any(keyword in lowered for keyword in MINECRAFT_CONTEXT_KEYWORDS)
