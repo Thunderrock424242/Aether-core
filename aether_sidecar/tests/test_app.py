@@ -1,8 +1,12 @@
 from fastapi.testclient import TestClient
 
 from aether_sidecar import app as app_module
-from aether_sidecar.app import activation_registry, app, learning
+from aether_sidecar.backends import TemplateBackend
 from aether_sidecar.config import settings
+
+activation_registry = app_module.activation_registry
+app = app_module.app
+learning = app_module.learning
 
 
 client = TestClient(app)
@@ -21,7 +25,7 @@ def setup_function() -> None:
     settings.activation_hook_token = None
     settings.dev_playground_enabled = False
     settings.dev_playground_token = None
-    app_module.backend = FakeBackend()
+    app_module.backend = TemplateBackend("aether-template-v1")
 
 
 def test_generate_returns_keyword_alerts():

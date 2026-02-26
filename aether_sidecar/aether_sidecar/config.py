@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8765
     model_backend: str = "ollama"
-    model_name: str = "aether-ollama-v1"
+    model_name: str = "llama3.1:8b"
     request_timeout_seconds: float = 20.0
     max_message_chars: int = 800
     memory_turn_limit: int = 6
