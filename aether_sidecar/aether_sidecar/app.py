@@ -121,6 +121,209 @@ async def status() -> StatusResponse:
     )
 
 
+@app.get("/status/page", response_class=HTMLResponse)
+async def status_page() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>A.E.T.H.E.R API Status</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --card: #111a32;
+      --border: #1f2a47;
+      --text: #e8ecf8;
+      --muted: #9da9c5;
+      --ok: #3ddc97;
+      --bad: #ff6b6b;
+      --warn: #ffd166;
+      --accent: #5da9ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #111937 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+    h1 { margin: 0; font-size: 1.8rem; }
+    .sub { color: var(--muted); margin-top: .4rem; }
+    .badge {
+      border: 1px solid var(--border);
+      background: #0f1730;
+      padding: .55rem .85rem;
+      border-radius: 999px;
+      white-space: nowrap;
+      font-size: .9rem;
+    }
+    .grid { margin-top: 1.2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: .95rem;
+    }
+    .label { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; }
+    .value { font-size: 1.05rem; margin-top: .4rem; }
+    .pill {
+      display: inline-block;
+      padding: .2rem .55rem;
+      border-radius: 999px;
+      font-size: .78rem;
+      margin-left: .5rem;
+      border: 1px solid transparent;
+    }
+    .pill.ok { background: rgba(61,220,151,.18); color: var(--ok); border-color: rgba(61,220,151,.45); }
+    .pill.bad { background: rgba(255,107,107,.15); color: var(--bad); border-color: rgba(255,107,107,.45); }
+    .section-title { margin: 1.4rem 0 .7rem; font-size: 1rem; color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .timeline { list-style: none; padding: 0; margin: 0; }
+    .timeline li { padding: .55rem 0; border-bottom: 1px dashed var(--border); color: #c6d0ea; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <div>
+        <h1>A.E.T.H.E.R API Status</h1>
+        <p class="sub">Live service health for inference and activation hooks.</p>
+      </div>
+      <div id="headline" class="badge">Checking status…</div>
+    </header>
+
+    <section class="grid" aria-label="service summary">
+      <article class="card">
+        <div class="label">Model Backend</div>
+        <div id="modelBackend" class="value">—</div>
+      </article>
+      <article class="card">
+        <div class="label">Model</div>
+        <div id="modelName" class="value mono">—</div>
+      </article>
+      <article class="card">
+        <div class="label">Backend Latency</div>
+        <div id="latency" class="value">—</div>
+      </article>
+      <article class="card">
+        <div class="label">Uptime</div>
+        <div id="uptime" class="value">—</div>
+      </article>
+    </section>
+
+    <h2 class="section-title">Components</h2>
+    <section class="grid" aria-label="component status">
+      <article class="card">
+        <div class="label">Inference API</div>
+        <div class="value">/generate <span id="inferencePill" class="pill">unknown</span></div>
+      </article>
+      <article class="card">
+        <div class="label">Activation Hooks</div>
+        <div class="value"><span id="hooksSummary">—</span><span id="hooksPill" class="pill">unknown</span></div>
+      </article>
+      <article class="card">
+        <div class="label">Keep Alive</div>
+        <div id="keepAlive" class="value">—</div>
+      </article>
+    </section>
+
+    <h2 class="section-title">Latest Events</h2>
+    <article class="card">
+      <ul id="events" class="timeline">
+        <li>Waiting for first status check…</li>
+      </ul>
+      <p class="sub">Raw JSON: <a href="/status" target="_blank" rel="noopener">/status</a></p>
+    </article>
+  </main>
+
+  <script>
+    const formatUptime = (seconds) => {
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      const parts = [];
+      if (d) parts.push(`${d}d`);
+      if (h || d) parts.push(`${h}h`);
+      if (m || h || d) parts.push(`${m}m`);
+      parts.push(`${s}s`);
+      return parts.join(' ');
+    };
+
+    const setPill = (el, ok, okText, badText) => {
+      el.classList.remove('ok', 'bad');
+      el.classList.add(ok ? 'ok' : 'bad');
+      el.textContent = ok ? okText : badText;
+    };
+
+    const addEvent = (msg) => {
+      const events = document.getElementById('events');
+      if (events.children.length === 1 && events.children[0].textContent.includes('Waiting')) {
+        events.innerHTML = '';
+      }
+      const li = document.createElement('li');
+      const ts = new Date().toLocaleTimeString();
+      li.textContent = `[${ts}] ${msg}`;
+      events.prepend(li);
+      while (events.children.length > 6) {
+        events.removeChild(events.lastElementChild);
+      }
+    };
+
+    const refresh = async () => {
+      try {
+        const response = await fetch('/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        document.getElementById('modelBackend').textContent = data.model_backend;
+        document.getElementById('modelName').textContent = data.model.checked_model || data.model_name;
+        document.getElementById('latency').textContent = `${data.model.latency_ms} ms`;
+        document.getElementById('uptime').textContent = formatUptime(data.uptime_seconds);
+        document.getElementById('keepAlive').textContent = data.keep_alive || 'default';
+
+        const online = data.model.status === 'online';
+        const headline = document.getElementById('headline');
+        headline.textContent = online ? 'All systems operational' : 'Partial outage detected';
+        setPill(document.getElementById('inferencePill'), online, 'operational', 'degraded');
+
+        const hookEnabled = data.activation_required;
+        const hookActive = !hookEnabled || (data.active_instances && data.active_instances.length > 0);
+        document.getElementById('hooksSummary').textContent = hookEnabled
+          ? `${data.active_instances.length} active instance(s)`
+          : 'Not required';
+        setPill(document.getElementById('hooksPill'), hookActive, 'healthy', 'waiting');
+
+        addEvent(
+          online
+            ? `Model backend responded in ${data.model.latency_ms} ms.`
+            : `Model backend offline: ${data.model.detail || 'unavailable'}`
+        );
+      } catch (error) {
+        document.getElementById('headline').textContent = 'Status check failed';
+        setPill(document.getElementById('inferencePill'), false, 'operational', 'degraded');
+        addEvent(`Unable to fetch /status: ${error.message}`);
+      }
+    };
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>
+    """
+    return HTMLResponse(content=html)
+
+
 @app.get("/heath")
 async def heath_redirect() -> RedirectResponse:
     return RedirectResponse(url="/status", status_code=307)
