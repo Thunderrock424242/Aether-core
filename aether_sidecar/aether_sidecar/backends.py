@@ -45,6 +45,16 @@ class OllamaBackend(BaseBackend):
         self.subsystem_models = subsystem_models or {}
         self.keep_alive = keep_alive
 
+    def _client_timeout(self) -> httpx.Timeout:
+        """
+        Build timeout profile tuned for local-model backends.
+
+        Connection attempts to a wrong host should fail quickly so fallback
+        URLs are tried promptly, while successful connections should tolerate
+        slower first-token/model-load latency.
+        """
+        return httpx.Timeout(connect=3.0, read=self.timeout_seconds, write=10.0, pool=10.0)
+
     @staticmethod
     def _detect_linux_docker_gateway() -> str | None:
         """Best-effort detection of Docker bridge gateway IP on Linux."""
@@ -176,7 +186,9 @@ class OllamaBackend(BaseBackend):
 
     @staticmethod
     def _format_request_failures(request_failures: list[tuple[str, httpx.RequestError]]) -> str:
-        details = ", ".join(f"{url} -> {error}" for url, error in request_failures)
+        details = ", ".join(
+            f"{url} -> {type(error).__name__}: {str(error) or repr(error)}" for url, error in request_failures
+        )
         return f"Failed to contact model backend. Attempts: {details}"
 
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
@@ -184,7 +196,7 @@ class OllamaBackend(BaseBackend):
         request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self.candidate_urls():
             try:
-                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
                         candidate_url,
                         json={
@@ -213,7 +225,7 @@ class OllamaBackend(BaseBackend):
         request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self.candidate_urls():
             try:
-                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
                         candidate_url,
                         json={
