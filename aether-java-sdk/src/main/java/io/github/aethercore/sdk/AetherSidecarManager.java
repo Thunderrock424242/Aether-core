@@ -42,6 +42,15 @@ public final class AetherSidecarManager {
             lastKnowledgeIndexes = modKnowledgeScanner.scan(config);
         }
 
+        boolean localHealthy = isHealthy(config.localSidecarBaseUrl(), Duration.ofSeconds(2));
+        if (localHealthy) {
+            return config.localSidecarBaseUrl();
+        }
+
+        if (config.backendMode() == BackendMode.LOCAL) {
+            throw runtimeUnavailable(config);
+        }
+
         return config.dedicatedServerBaseUrl();
     }
 
@@ -55,8 +64,13 @@ public final class AetherSidecarManager {
                 .timeout(timeout == null ? Duration.ofSeconds(2) : timeout)
                 .GET()
                 .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return response.statusCode() < 400;
+
+        try {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return response.statusCode() < 400;
+        } catch (IOException ioException) {
+            return false;
+        }
     }
 
     public synchronized void stop() {
@@ -64,5 +78,18 @@ public final class AetherSidecarManager {
             process.destroy();
             process = null;
         }
+    }
+
+    private static AetherRuntimeUnavailableException runtimeUnavailable(HostingConfig config) {
+        StringBuilder message = new StringBuilder();
+        message.append("Local A.E.T.H.E.R runtime is required but unavailable at ")
+                .append(config.localSidecarBaseUrl())
+                .append(". Install/start the companion runtime (includes Ollama), then retry.");
+
+        if (!config.runtimeInstallHelpUrl().isBlank()) {
+            message.append(" Setup guide: ").append(config.runtimeInstallHelpUrl());
+        }
+
+        return new AetherRuntimeUnavailableException(message.toString());
     }
 }

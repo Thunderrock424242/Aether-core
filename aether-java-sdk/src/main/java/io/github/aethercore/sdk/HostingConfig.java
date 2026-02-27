@@ -11,8 +11,11 @@ import java.util.Objects;
 public final class HostingConfig {
     private final boolean hostingEnabled;
     private final boolean autoStartEnabled;
+    private final BackendMode backendMode;
+    private final String localSidecarBaseUrl;
     private final boolean preferDedicatedServer;
     private final String dedicatedServerBaseUrl;
+    private final String runtimeInstallHelpUrl;
     private final List<String> sidecarStartCommand;
     private final Path sidecarWorkingDirectory;
     private final boolean modKnowledgeScanEnabled;
@@ -22,8 +25,11 @@ public final class HostingConfig {
     public HostingConfig(
             boolean hostingEnabled,
             boolean autoStartEnabled,
+            BackendMode backendMode,
+            String localSidecarBaseUrl,
             boolean preferDedicatedServer,
             String dedicatedServerBaseUrl,
+            String runtimeInstallHelpUrl,
             List<String> sidecarStartCommand,
             Path sidecarWorkingDirectory,
             boolean modKnowledgeScanEnabled,
@@ -32,8 +38,11 @@ public final class HostingConfig {
     ) {
         this.hostingEnabled = hostingEnabled;
         this.autoStartEnabled = autoStartEnabled;
+        this.backendMode = backendMode == null ? BackendMode.AUTO : backendMode;
+        this.localSidecarBaseUrl = Objects.requireNonNull(localSidecarBaseUrl, "localSidecarBaseUrl");
         this.preferDedicatedServer = preferDedicatedServer;
-        this.dedicatedServerBaseUrl = dedicatedServerBaseUrl;
+        this.dedicatedServerBaseUrl = Objects.requireNonNull(dedicatedServerBaseUrl, "dedicatedServerBaseUrl");
+        this.runtimeInstallHelpUrl = runtimeInstallHelpUrl == null ? "" : runtimeInstallHelpUrl;
         this.sidecarStartCommand = List.copyOf(Objects.requireNonNull(sidecarStartCommand, "sidecarStartCommand"));
         this.sidecarWorkingDirectory = Objects.requireNonNull(sidecarWorkingDirectory, "sidecarWorkingDirectory");
         this.modKnowledgeScanEnabled = modKnowledgeScanEnabled;
@@ -45,8 +54,11 @@ public final class HostingConfig {
         return new HostingConfig(
                 false,
                 true,
+                BackendMode.AUTO,
+                "http://127.0.0.1:8765",
                 true,
                 "http://127.0.0.1:8765",
+                "https://ollama.com/download",
                 List.of("./scripts/run_sidecar_dev.sh"),
                 Path.of("."),
                 false,
@@ -63,12 +75,24 @@ public final class HostingConfig {
         return autoStartEnabled;
     }
 
+    public BackendMode backendMode() {
+        return backendMode;
+    }
+
+    public String localSidecarBaseUrl() {
+        return localSidecarBaseUrl;
+    }
+
     public boolean preferDedicatedServer() {
         return preferDedicatedServer;
     }
 
     public String dedicatedServerBaseUrl() {
         return dedicatedServerBaseUrl;
+    }
+
+    public String runtimeInstallHelpUrl() {
+        return runtimeInstallHelpUrl;
     }
 
     public List<String> sidecarStartCommand() {

@@ -17,6 +17,14 @@ public final class AetherHostingPlanner {
             return HostingDecision.DO_NOT_HOST;
         }
 
+        if (config.backendMode() == BackendMode.LOCAL) {
+            return HostingDecision.HOST_LOCALLY;
+        }
+
+        if (config.backendMode() == BackendMode.REMOTE) {
+            return HostingDecision.USE_DEDICATED_SERVER;
+        }
+
         if (config.preferDedicatedServer()) {
             if (role == HostingRole.DEDICATED_SERVER) {
                 return HostingDecision.HOST_LOCALLY;

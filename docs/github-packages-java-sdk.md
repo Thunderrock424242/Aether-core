@@ -79,10 +79,16 @@ HostingRole role = isDedicatedServer ? HostingRole.DEDICATED_SERVER : HostingRol
 HostingConfig config = new HostingConfig(
     true, // hostingEnabled
     true, // autoStartEnabled
+    BackendMode.AUTO,
+    "http://127.0.0.1:8765", // localSidecarBaseUrl
     true, // preferDedicatedServer
-    "http://127.0.0.1:8765",
+    "http://127.0.0.1:8765", // dedicatedServerBaseUrl
+    "https://ollama.com/download", // companion runtime setup docs
     List.of("./scripts/run_sidecar_dev.sh"),
-    Path.of(".")
+    Path.of("."),
+    false,
+    List.of(Path.of("mods")),
+    Map.of()
 );
 
 AetherSidecarManager manager = new AetherSidecarManager();

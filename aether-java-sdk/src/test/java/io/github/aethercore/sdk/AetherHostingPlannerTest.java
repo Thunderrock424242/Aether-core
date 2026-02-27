@@ -11,31 +11,48 @@ class AetherHostingPlannerTest {
 
     @Test
     void prefersDedicatedServerWhenClientRole() {
-        HostingConfig config = config(true, true, true);
+        HostingConfig config = config(true, true, true, BackendMode.AUTO);
         HostingDecision decision = AetherHostingPlanner.decide(HostingRole.CLIENT, config);
         assertEquals(HostingDecision.USE_DEDICATED_SERVER, decision);
     }
 
     @Test
     void hostsLocallyOnDedicatedServerWhenPreferred() {
-        HostingConfig config = config(true, true, true);
+        HostingConfig config = config(true, true, true, BackendMode.AUTO);
         HostingDecision decision = AetherHostingPlanner.decide(HostingRole.DEDICATED_SERVER, config);
         assertEquals(HostingDecision.HOST_LOCALLY, decision);
     }
 
     @Test
     void doesNotHostWhenDisabled() {
-        HostingConfig config = config(false, true, true);
+        HostingConfig config = config(false, true, true, BackendMode.AUTO);
         HostingDecision decision = AetherHostingPlanner.decide(HostingRole.DEDICATED_SERVER, config);
         assertEquals(HostingDecision.DO_NOT_HOST, decision);
     }
 
-    private static HostingConfig config(boolean hostingEnabled, boolean autoStartEnabled, boolean preferDedicatedServer) {
+    @Test
+    void remoteModeAlwaysUsesDedicatedServer() {
+        HostingConfig config = config(true, true, false, BackendMode.REMOTE);
+        HostingDecision decision = AetherHostingPlanner.decide(HostingRole.DEDICATED_SERVER, config);
+        assertEquals(HostingDecision.USE_DEDICATED_SERVER, decision);
+    }
+
+    @Test
+    void localModeAlwaysHostsLocally() {
+        HostingConfig config = config(true, true, true, BackendMode.LOCAL);
+        HostingDecision decision = AetherHostingPlanner.decide(HostingRole.CLIENT, config);
+        assertEquals(HostingDecision.HOST_LOCALLY, decision);
+    }
+
+    private static HostingConfig config(boolean hostingEnabled, boolean autoStartEnabled, boolean preferDedicatedServer, BackendMode backendMode) {
         return new HostingConfig(
                 hostingEnabled,
                 autoStartEnabled,
+                backendMode,
+                "http://127.0.0.1:8765",
                 preferDedicatedServer,
                 "http://127.0.0.1:8765",
+                "https://ollama.com/download",
                 List.of("echo", "start"),
                 Path.of("."),
                 false,
