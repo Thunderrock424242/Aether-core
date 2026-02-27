@@ -5,7 +5,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .backends import BackendUnavailableError, OllamaBackend
-from .config import parse_ollama_fallback_urls, parse_subsystem_models, settings
+from .config import parse_ollama_fallback_urls, parse_subsystem_models, resolve_model_name, settings
 from .memory import SessionLearning, SessionMemory
 from .models import (
     DevPlaygroundAuthRequest,
@@ -55,12 +55,13 @@ learning = SessionLearning(lesson_limit=settings.learning_lesson_limit, log_path
 activation_registry = ActivationRegistry()
 subsystem_models = parse_subsystem_models(settings.subsystem_models)
 fallback_urls = parse_ollama_fallback_urls(settings.ollama_fallback_urls)
+resolved_model_name = resolve_model_name(settings)
 if settings.model_backend.lower() != "ollama":
     raise RuntimeError("Unsupported model backend. Set AETHER_MODEL_BACKEND=ollama.")
 
 backend = OllamaBackend(
     settings.ollama_url,
-    settings.model_name,
+    resolved_model_name,
     settings.request_timeout_seconds,
     subsystem_models=subsystem_models,
     keep_alive=settings.ollama_keep_alive,
@@ -108,13 +109,13 @@ async def status() -> StatusResponse:
         model_status = ModelStatusResponse(
             status="offline",
             detail=str(exc),
-            checked_model=settings.model_name,
+            checked_model=resolved_model_name,
             latency_ms=int((time.perf_counter() - status_start) * 1000),
         )
 
     return StatusResponse(
         model_backend=settings.model_backend,
-        model_name=settings.model_name,
+        model_name=resolved_model_name,
         keep_alive=settings.ollama_keep_alive,
         uptime_seconds=int(time.monotonic() - started_at),
         activation_required=settings.activation_hook_enabled,
@@ -335,7 +336,7 @@ async def heath_redirect() -> RedirectResponse:
 async def health() -> HealthResponse:
     return HealthResponse(
         model_backend=settings.model_backend,
-        model_name=settings.model_name,
+        model_name=resolved_model_name,
         keep_alive=settings.ollama_keep_alive,
     )
 
@@ -414,7 +415,7 @@ document.getElementById('send').onclick = async () => {
 
 @app.get("/version", response_model=VersionResponse)
 async def version() -> VersionResponse:
-    return VersionResponse(version=settings.app_version, model_name=settings.model_name)
+    return VersionResponse(version=settings.app_version, model_name=resolved_model_name)
 
 
 @app.get("/hooks/status", response_model=HookStatusResponse)
@@ -653,7 +654,7 @@ async def generate(
         return GenerateResponse(
             text=safe_refusal(),
             subsystem_used=subsystem,
-            model_used=(subsystem_models.get(subsystem) or settings.model_name),
+            model_used=(subsystem_models.get(subsystem) or resolved_model_name),
             subsystem_alerts={k.value: v for k, v in alerts.items()},
             safety_flags=safety.flags,
             learned_context=learned_context,
