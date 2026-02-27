@@ -110,7 +110,11 @@ class OllamaBackend(BaseBackend):
         if hostname not in {"127.0.0.1", "localhost"}:
             return [self.base_url]
 
-        hostnames = ["host.docker.internal", "gateway.docker.internal"]
+        hostnames = [
+            "host.docker.internal",
+            "gateway.docker.internal",
+            "host.containers.internal",
+        ]
         fallback_ips = ["172.17.0.1", "192.168.65.1"]
         docker_host_override = os.getenv("AETHER_DOCKER_HOST_GATEWAY", "").strip()
         if docker_host_override:
