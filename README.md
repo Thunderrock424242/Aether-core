@@ -9,10 +9,35 @@ A.E.T.H.E.R AI planning + implementation workspace.
 - [`docs/ai-training-pipeline.md`](docs/ai-training-pipeline.md) - training/fine-tuning pipeline starter code.
 - [`docs/ai-production-orchestration.md`](docs/ai-production-orchestration.md) - production deployment + observability stack.
 
+- [`docs/github-packages-java-sdk.md`](docs/github-packages-java-sdk.md) - publish Java SDK to GitHub Packages and consume it from NeoForge mods.
+
+> Note: the Java SDK is optional and only acts as a JVM client for NeoForge mods; the AI runtime remains in `aether_sidecar`.
+> It now includes hosting policy helpers so mods can prefer dedicated-server hosting when enabled.
+
 ## Implemented runtime
 - [`aether_sidecar/`](aether_sidecar/) - runnable non-Java AI sidecar service with subsystem routing, keyword alerts, safety checks, session memory, teachable per-session learning notes, pluggable model backends, and optional per-subsystem model selection.
 - [`training_pipeline/`](training_pipeline/) - dataset validation + LoRA fine-tuning starter scripts.
 - [`deploy/production/`](deploy/production/) - Docker Compose orchestration with Prometheus/Grafana/Loki.
+
+## Gradle wrapper setup (when `gradle-wrapper.jar` is not committed)
+If you clone this repo and `./gradlew` fails because `gradle/wrapper/gradle-wrapper.jar` is missing, install/regenerate the wrapper with a local Gradle install:
+
+```bash
+gradle wrapper
+```
+
+Then run Gradle tasks normally with:
+
+```bash
+./gradlew :aether-java-sdk:test
+```
+
+Windows PowerShell:
+
+```powershell
+gradle wrapper
+.\gradlew.bat :aether-java-sdk:test
+```
 
 ## Dev quick start
 ```bash
