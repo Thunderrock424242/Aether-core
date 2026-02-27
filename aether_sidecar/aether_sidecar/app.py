@@ -25,7 +25,7 @@ from .models import (
     VersionResponse,
     WarmupResponse,
 )
-from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
+from .observability import GENERATE_FALLBACK_HOPS, GENERATE_REQUESTS, metrics_middleware, metrics_response
 from .router import detect_subsystem_alerts, is_minecraft_related, pick_subsystem, subsystem_teaching_context
 from .safety import evaluate_message, safe_refusal
 
@@ -695,13 +695,14 @@ async def generate(
     )
 
     try:
-        text, model_used = await backend.generate(full_prompt, subsystem)
+        text, model_used, attempt_summary = await backend.generate(full_prompt, subsystem)
     except BackendUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     memory.append(payload.session_id, "player", message)
     memory.append(payload.session_id, "assistant", text)
     GENERATE_REQUESTS.labels(subsystem.value, "false").inc()
+    GENERATE_FALLBACK_HOPS.observe(attempt_summary.fallback_hops)
 
     return GenerateResponse(
         text=text,

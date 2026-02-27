@@ -27,6 +27,27 @@ GENERATE_REQUESTS = Counter(
     registry=registry,
 )
 
+BACKEND_ATTEMPTS = Counter(
+    "aether_backend_attempts_total",
+    "Total backend call attempts by operation and outcome",
+    ["operation", "url", "outcome"],
+    registry=registry,
+)
+
+BACKEND_ATTEMPT_LATENCY_SECONDS = Histogram(
+    "aether_backend_attempt_latency_seconds",
+    "Backend attempt latency seconds",
+    ["operation", "url", "outcome"],
+    registry=registry,
+)
+
+GENERATE_FALLBACK_HOPS = Histogram(
+    "aether_generate_fallback_hops",
+    "How many fallback hops were required before a successful generate response",
+    buckets=(0, 1, 2, 3, 4, 5, 8, 13),
+    registry=registry,
+)
+
 
 async def metrics_middleware(request: Request, call_next):
     started = time.perf_counter()

@@ -3,12 +3,14 @@ from urllib.parse import urlparse, urlunparse
 import os
 import socket
 import time
+from dataclasses import dataclass
 from ipaddress import IPv4Address
 from ipaddress import ip_address
 
 import httpx
 
 from .models import Subsystem
+from .observability import BACKEND_ATTEMPT_LATENCY_SECONDS, BACKEND_ATTEMPTS
 
 SYSTEM_PROMPTS = {
     Subsystem.AEGIS: "You are Aegis, focused on safety and hazard prevention in Minecraft.",
@@ -20,11 +22,18 @@ SYSTEM_PROMPTS = {
 }
 
 
+@dataclass
+class BackendAttemptSummary:
+    attempts: int = 0
+    failed_attempts: int = 0
+    fallback_hops: int = 0
+
+
 class BaseBackend:
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
         raise NotImplementedError
 
-    async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
+    async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str, BackendAttemptSummary]:
         raise NotImplementedError
 
 
@@ -326,10 +335,16 @@ class OllamaBackend(BaseBackend):
         )
         return f"Failed to contact model backend. Attempts: {details}"
 
+    @staticmethod
+    def _record_attempt_metric(operation: str, url: str, outcome: str, elapsed_seconds: float) -> None:
+        BACKEND_ATTEMPTS.labels(operation, url, outcome).inc()
+        BACKEND_ATTEMPT_LATENCY_SECONDS.labels(operation, url, outcome).observe(max(0.0, elapsed_seconds))
+
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
         model_name = self.model_for_subsystem(subsystem)
         request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self._eligible_candidate_urls():
+            attempt_started = time.perf_counter()
             try:
                 async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
@@ -344,24 +359,30 @@ class OllamaBackend(BaseBackend):
                     resp.raise_for_status()
                 self._preferred_url = candidate_url
                 self._mark_url_success(candidate_url)
+                self._record_attempt_metric("warmup", candidate_url, "success", time.perf_counter() - attempt_started)
                 return model_name
             except httpx.HTTPStatusError as exc:
+                self._record_attempt_metric("warmup", candidate_url, "http_error", time.perf_counter() - attempt_started)
                 raise BackendUnavailableError(
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
                 self._mark_url_failure(candidate_url)
                 request_failures.append((candidate_url, exc))
+                self._record_attempt_metric("warmup", candidate_url, "request_error", time.perf_counter() - attempt_started)
 
         if request_failures:
             raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]
 
         raise BackendUnavailableError(f"Failed to contact model backend at {self.base_url}")
 
-    async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
+    async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str, BackendAttemptSummary]:
         model_name = self.model_for_subsystem(subsystem)
         request_failures: list[tuple[str, httpx.RequestError]] = []
-        for candidate_url in self._eligible_candidate_urls():
+        attempt_summary = BackendAttemptSummary()
+        for attempt_index, candidate_url in enumerate(self._eligible_candidate_urls()):
+            attempt_summary.attempts += 1
+            attempt_started = time.perf_counter()
             try:
                 async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
@@ -377,19 +398,25 @@ class OllamaBackend(BaseBackend):
                     data = resp.json()
                     text = (data.get("response") or "").strip()
                     if not text:
+                        self._record_attempt_metric("generate", candidate_url, "empty", time.perf_counter() - attempt_started)
                         raise BackendUnavailableError(
                             f"Model backend at {candidate_url} returned an empty response for model {model_name}."
                         )
                     self._preferred_url = candidate_url
                     self._mark_url_success(candidate_url)
-                    return text, model_name
+                    attempt_summary.fallback_hops = attempt_index
+                    self._record_attempt_metric("generate", candidate_url, "success", time.perf_counter() - attempt_started)
+                    return text, model_name, attempt_summary
             except httpx.HTTPStatusError as exc:
+                self._record_attempt_metric("generate", candidate_url, "http_error", time.perf_counter() - attempt_started)
                 raise BackendUnavailableError(
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
                 self._mark_url_failure(candidate_url)
                 request_failures.append((candidate_url, exc))
+                attempt_summary.failed_attempts += 1
+                self._record_attempt_metric("generate", candidate_url, "request_error", time.perf_counter() - attempt_started)
 
         if request_failures:
             raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]

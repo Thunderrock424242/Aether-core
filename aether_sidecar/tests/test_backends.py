@@ -171,11 +171,14 @@ async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", fake_client_factory)
 
-    text, model_name = await backend.generate("hello", Subsystem.AEGIS)
+    text, model_name, summary = await backend.generate("hello", Subsystem.AEGIS)
 
     assert text == "ready"
     assert model_name == "llama3.1:8b"
     assert calls == [local_url, ollama_service_url, aether_ollama_service_url, docker_host_url]
+    assert summary.attempts == 4
+    assert summary.failed_attempts == 3
+    assert summary.fallback_hops == 3
 
 
 @pytest.mark.anyio
