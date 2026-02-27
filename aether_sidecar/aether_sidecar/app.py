@@ -5,7 +5,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .backends import BackendUnavailableError, OllamaBackend
-from .config import parse_subsystem_models, settings
+from .config import parse_ollama_fallback_urls, parse_subsystem_models, settings
 from .memory import SessionLearning, SessionMemory
 from .models import (
     DevPlaygroundAuthRequest,
@@ -54,6 +54,7 @@ memory = SessionMemory(turn_limit=settings.memory_turn_limit)
 learning = SessionLearning(lesson_limit=settings.learning_lesson_limit, log_path=settings.learning_log_path)
 activation_registry = ActivationRegistry()
 subsystem_models = parse_subsystem_models(settings.subsystem_models)
+fallback_urls = parse_ollama_fallback_urls(settings.ollama_fallback_urls)
 if settings.model_backend.lower() != "ollama":
     raise RuntimeError("Unsupported model backend. Set AETHER_MODEL_BACKEND=ollama.")
 
@@ -63,6 +64,7 @@ backend = OllamaBackend(
     settings.request_timeout_seconds,
     subsystem_models=subsystem_models,
     keep_alive=settings.ollama_keep_alive,
+    fallback_urls=fallback_urls,
 )
 
 

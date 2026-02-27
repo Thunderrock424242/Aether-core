@@ -38,12 +38,15 @@ class OllamaBackend(BaseBackend):
         timeout_seconds: float = 20.0,
         subsystem_models: dict[Subsystem, str] | None = None,
         keep_alive: str = "15m",
+        fallback_urls: list[str] | None = None,
     ):
         self.base_url = base_url
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.subsystem_models = subsystem_models or {}
         self.keep_alive = keep_alive
+        self.fallback_urls = fallback_urls or []
+        self._preferred_url: str | None = None
 
     def _client_timeout(self) -> httpx.Timeout:
         """
@@ -105,6 +108,14 @@ class OllamaBackend(BaseBackend):
 
         return None
 
+    @staticmethod
+    def _dedupe_urls(urls: list[str]) -> list[str]:
+        deduped: list[str] = []
+        for url in urls:
+            if url and url not in deduped:
+                deduped.append(url)
+        return deduped
+
     def candidate_urls(self) -> list[str]:
         """
         Return backend URLs to try in order.
@@ -117,13 +128,32 @@ class OllamaBackend(BaseBackend):
         parsed = urlparse(self.base_url)
         hostname = (parsed.hostname or "").lower()
 
-        if hostname not in {"127.0.0.1", "localhost"}:
-            return [self.base_url]
+        candidates = []
+        if self._preferred_url:
+            candidates.append(self._preferred_url)
+        candidates.append(self.base_url)
+
+        if self.fallback_urls:
+            candidates.extend(self.fallback_urls)
+
+        local_aliases = {
+            "127.0.0.1",
+            "localhost",
+            "host.docker.internal",
+            "gateway.docker.internal",
+            "host.containers.internal",
+            "172.17.0.1",
+            "192.168.65.1",
+        }
+        if hostname not in local_aliases:
+            return self._dedupe_urls(candidates)
 
         hostnames = [
             "host.docker.internal",
             "gateway.docker.internal",
             "host.containers.internal",
+            "127.0.0.1",
+            "localhost",
         ]
         fallback_ips = ["172.17.0.1", "192.168.65.1"]
         docker_host_override = os.getenv("AETHER_DOCKER_HOST_GATEWAY", "").strip()
@@ -140,7 +170,6 @@ class OllamaBackend(BaseBackend):
 
         hostnames.extend(fallback_ips)
 
-        candidates = [self.base_url]
         for docker_host in hostnames:
             try:
                 socket.getaddrinfo(docker_host, parsed.port or 80)
@@ -161,8 +190,7 @@ class OllamaBackend(BaseBackend):
                     parsed.fragment,
                 )
             )
-            if candidate_url not in candidates:
-                candidates.append(candidate_url)
+            candidates.append(candidate_url)
 
         if len(candidates) == 1 and linux_gateway_ip:
             host_port = linux_gateway_ip if not parsed.port else f"{linux_gateway_ip}:{parsed.port}"
@@ -179,7 +207,7 @@ class OllamaBackend(BaseBackend):
                 )
             )
 
-        return candidates
+        return self._dedupe_urls(candidates)
 
     def model_for_subsystem(self, subsystem: Subsystem) -> str:
         return self.subsystem_models.get(subsystem, self.model_name)
@@ -207,6 +235,7 @@ class OllamaBackend(BaseBackend):
                         },
                     )
                     resp.raise_for_status()
+                self._preferred_url = candidate_url
                 return model_name
             except httpx.HTTPStatusError as exc:
                 raise BackendUnavailableError(
@@ -238,6 +267,7 @@ class OllamaBackend(BaseBackend):
                     resp.raise_for_status()
                     data = resp.json()
                     text = (data.get("response") or "").strip() or "No model response."
+                    self._preferred_url = candidate_url
                     return text, model_name
             except httpx.HTTPStatusError as exc:
                 raise BackendUnavailableError(

@@ -58,6 +58,7 @@ async def test_candidate_urls_for_localhost_use_docker_host_fallbacks(monkeypatc
         "http://host.docker.internal:11434/api/generate",
         "http://gateway.docker.internal:11434/api/generate",
         "http://host.containers.internal:11434/api/generate",
+        "http://localhost:11434/api/generate",
         "http://172.17.0.1:11434/api/generate",
         "http://192.168.65.1:11434/api/generate",
     ]
@@ -80,6 +81,7 @@ async def test_candidate_urls_include_gateway_override(monkeypatch):
         "http://host.docker.internal:11434/api/generate",
         "http://gateway.docker.internal:11434/api/generate",
         "http://host.containers.internal:11434/api/generate",
+        "http://127.0.0.1:11434/api/generate",
         "http://172.17.0.1:11434/api/generate",
         "http://192.168.65.1:11434/api/generate",
     ]
@@ -101,6 +103,7 @@ async def test_candidate_urls_include_detected_linux_gateway_when_aliases_do_not
 
     assert backend.candidate_urls() == [
         "http://127.0.0.1:11434/api/generate",
+        "http://localhost:11434/api/generate",
         "http://172.17.0.1:11434/api/generate",
         "http://192.168.65.1:11434/api/generate",
     ]
@@ -155,6 +158,7 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
     docker_host_url = "http://host.docker.internal:11434/api/generate"
     containers_host_url = "http://host.containers.internal:11434/api/generate"
     gateway_host_url = "http://gateway.docker.internal:11434/api/generate"
+    localhost_alias_url = "http://localhost:11434/api/generate"
     linux_bridge_url = "http://172.17.0.1:11434/api/generate"
     docker_desktop_url = "http://192.168.65.1:11434/api/generate"
     backend = OllamaBackend(local_url, "llama3.1:8b")
@@ -169,6 +173,9 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
         ),
         gateway_host_url: httpx.ConnectError(
             "gateway host unavailable", request=httpx.Request("POST", gateway_host_url)
+        ),
+        localhost_alias_url: httpx.ConnectError(
+            "localhost alias unavailable", request=httpx.Request("POST", localhost_alias_url)
         ),
         linux_bridge_url: httpx.ConnectError(
             "linux bridge unavailable", request=httpx.Request("POST", linux_bridge_url)
@@ -192,6 +199,7 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
         docker_host_url,
         gateway_host_url,
         containers_host_url,
+        localhost_alias_url,
         linux_bridge_url,
         docker_desktop_url,
     ]
@@ -215,3 +223,84 @@ def test_detect_resolv_conf_nameserver_returns_private_ipv4(tmp_path, monkeypatc
     monkeypatch.setattr("builtins.open", fake_open)
 
     assert OllamaBackend._detect_resolv_conf_nameserver() == "10.0.0.1"
+
+
+@pytest.mark.anyio
+async def test_candidate_urls_include_explicit_fallback_urls_first(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    backend = OllamaBackend(
+        "http://127.0.0.1:11434/api/generate",
+        "llama3.1:8b",
+        fallback_urls=[
+            "http://10.0.2.2:11434/api/generate",
+            "http://host.docker.internal:11434/api/generate",
+        ],
+    )
+
+    assert backend.candidate_urls()[:3] == [
+        "http://127.0.0.1:11434/api/generate",
+        "http://10.0.2.2:11434/api/generate",
+        "http://host.docker.internal:11434/api/generate",
+    ]
+
+
+@pytest.mark.anyio
+async def test_generate_remembers_last_successful_url(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+
+    local_url = "http://127.0.0.1:11434/api/generate"
+    docker_host_url = "http://host.docker.internal:11434/api/generate"
+    backend = OllamaBackend(local_url, "llama3.1:8b")
+
+    calls = []
+
+    responses_by_url = {
+        local_url: httpx.ConnectError("local unavailable", request=httpx.Request("POST", local_url)),
+        docker_host_url: _FakeResponse({"response": "ok"}),
+    }
+
+    def fake_client_factory(*args, **kwargs):
+        return _FakeAsyncClient(responses_by_url, calls)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client_factory)
+
+    await backend.generate("hello", Subsystem.AEGIS)
+    await backend.generate("hello again", Subsystem.AEGIS)
+
+    assert calls[:2] == [local_url, docker_host_url]
+    assert calls[2] == docker_host_url
+
+
+@pytest.mark.anyio
+async def test_candidate_urls_for_host_docker_internal_still_tries_other_local_aliases(monkeypatch):
+    monkeypatch.delenv("AETHER_DOCKER_HOST_GATEWAY", raising=False)
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    backend = OllamaBackend("http://host.docker.internal:11434/api/generate", "llama3.1:8b")
+
+    assert backend.candidate_urls() == [
+        "http://host.docker.internal:11434/api/generate",
+        "http://gateway.docker.internal:11434/api/generate",
+        "http://host.containers.internal:11434/api/generate",
+        "http://127.0.0.1:11434/api/generate",
+        "http://localhost:11434/api/generate",
+        "http://172.17.0.1:11434/api/generate",
+        "http://192.168.65.1:11434/api/generate",
+    ]
