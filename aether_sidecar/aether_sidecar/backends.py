@@ -1,5 +1,9 @@
 from urllib.parse import urlparse, urlunparse
 
+import os
+import socket
+from ipaddress import IPv4Address
+
 import httpx
 
 from .models import Subsystem
@@ -41,14 +45,39 @@ class OllamaBackend(BaseBackend):
         self.subsystem_models = subsystem_models or {}
         self.keep_alive = keep_alive
 
+    @staticmethod
+    def _detect_linux_docker_gateway() -> str | None:
+        """Best-effort detection of Docker bridge gateway IP on Linux."""
+        route_file = "/proc/net/route"
+        if not os.path.exists(route_file):
+            return None
+
+        try:
+            with open(route_file, encoding="utf-8") as handle:
+                next(handle, None)
+                for line in handle:
+                    fields = line.strip().split()
+                    if len(fields) < 3:
+                        continue
+                    destination, gateway_hex = fields[1], fields[2]
+                    if destination != "00000000":
+                        continue
+                    gateway_bytes = bytes.fromhex(gateway_hex)
+                    gateway_ip = str(IPv4Address(gateway_bytes[::-1]))
+                    return gateway_ip
+        except (OSError, ValueError):
+            return None
+
+        return None
+
     def candidate_urls(self) -> list[str]:
         """
         Return backend URLs to try in order.
 
         In containerized/devcontainer setups, ``127.0.0.1`` resolves to the
         container itself rather than the user's host machine where Ollama is
-        often running. When the configured URL points at localhost, add a
-        secondary ``host.docker.internal`` candidate.
+        often running. When the configured URL points at localhost, add common
+        Docker host aliases as secondary candidates.
         """
         parsed = urlparse(self.base_url)
         hostname = (parsed.hostname or "").lower()
@@ -56,32 +85,67 @@ class OllamaBackend(BaseBackend):
         if hostname not in {"127.0.0.1", "localhost"}:
             return [self.base_url]
 
-        host_port = "host.docker.internal"
-        if parsed.port:
-            host_port = f"{host_port}:{parsed.port}"
+        hostnames = ["host.docker.internal", "gateway.docker.internal"]
+        docker_host_override = os.getenv("AETHER_DOCKER_HOST_GATEWAY", "").strip()
+        if docker_host_override:
+            hostnames.append(docker_host_override)
 
-        docker_host_url = urlunparse(
-            (
-                parsed.scheme,
-                host_port,
-                parsed.path,
-                parsed.params,
-                parsed.query,
-                parsed.fragment,
+        linux_gateway_ip = self._detect_linux_docker_gateway()
+        if linux_gateway_ip:
+            hostnames.append(linux_gateway_ip)
+
+        candidates = [self.base_url]
+        for docker_host in hostnames:
+            try:
+                socket.getaddrinfo(docker_host, parsed.port or 80)
+            except socket.gaierror:
+                continue
+
+            host_port = docker_host
+            if parsed.port:
+                host_port = f"{host_port}:{parsed.port}"
+
+            candidate_url = urlunparse(
+                (
+                    parsed.scheme,
+                    host_port,
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment,
+                )
             )
-        )
+            if candidate_url not in candidates:
+                candidates.append(candidate_url)
 
-        if docker_host_url == self.base_url:
-            return [self.base_url]
+        if len(candidates) == 1 and linux_gateway_ip:
+            host_port = linux_gateway_ip if not parsed.port else f"{linux_gateway_ip}:{parsed.port}"
+            candidates.append(
+                urlunparse(
+                    (
+                        parsed.scheme,
+                        host_port,
+                        parsed.path,
+                        parsed.params,
+                        parsed.query,
+                        parsed.fragment,
+                    )
+                )
+            )
 
-        return [self.base_url, docker_host_url]
+        return candidates
 
     def model_for_subsystem(self, subsystem: Subsystem) -> str:
         return self.subsystem_models.get(subsystem, self.model_name)
 
+    @staticmethod
+    def _format_request_failures(request_failures: list[tuple[str, httpx.RequestError]]) -> str:
+        details = ", ".join(f"{url} -> {error}" for url, error in request_failures)
+        return f"Failed to contact model backend. Attempts: {details}"
+
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
         model_name = self.model_for_subsystem(subsystem)
-        request_error: httpx.RequestError | None = None
+        request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self.candidate_urls():
             try:
                 async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
@@ -101,15 +165,16 @@ class OllamaBackend(BaseBackend):
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
-                request_error = exc
+                request_failures.append((candidate_url, exc))
 
-        raise BackendUnavailableError(
-            f"Failed to contact model backend at {self.base_url}: {request_error}"
-        ) from request_error
+        if request_failures:
+            raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]
+
+        raise BackendUnavailableError(f"Failed to contact model backend at {self.base_url}")
 
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
         model_name = self.model_for_subsystem(subsystem)
-        request_error: httpx.RequestError | None = None
+        request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self.candidate_urls():
             try:
                 async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
@@ -131,8 +196,9 @@ class OllamaBackend(BaseBackend):
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
-                request_error = exc
+                request_failures.append((candidate_url, exc))
 
-        raise BackendUnavailableError(
-            f"Failed to contact model backend at {self.base_url}: {request_error}"
-        ) from request_error
+        if request_failures:
+            raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]
+
+        raise BackendUnavailableError(f"Failed to contact model backend at {self.base_url}")
