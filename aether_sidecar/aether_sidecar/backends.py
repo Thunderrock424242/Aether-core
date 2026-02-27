@@ -4,6 +4,7 @@ import os
 import socket
 import time
 from ipaddress import IPv4Address
+from ipaddress import ip_address
 
 import httpx
 
@@ -246,26 +247,37 @@ class OllamaBackend(BaseBackend):
         hostnames.extend(fallback_ips)
 
         for docker_host in hostnames:
+            is_numeric_host = False
             try:
-                socket.getaddrinfo(docker_host, parsed.port or 80)
-            except socket.gaierror:
-                continue
+                ip_address(docker_host)
+                is_numeric_host = True
+            except ValueError:
+                is_numeric_host = False
 
-            host_port = docker_host
-            if parsed.port:
-                host_port = f"{host_port}:{parsed.port}"
+            if not is_numeric_host:
+                try:
+                    socket.getaddrinfo(docker_host, parsed.port or 80)
+                except socket.gaierror:
+                    continue
 
-            candidate_url = urlunparse(
-                (
-                    parsed.scheme,
-                    host_port,
-                    parsed.path,
-                    parsed.params,
-                    parsed.query,
-                    parsed.fragment,
+            try:
+                host_port = docker_host
+                if parsed.port:
+                    host_port = f"{host_port}:{parsed.port}"
+
+                candidate_url = urlunparse(
+                    (
+                        parsed.scheme,
+                        host_port,
+                        parsed.path,
+                        parsed.params,
+                        parsed.query,
+                        parsed.fragment,
+                    )
                 )
-            )
-            candidates.append(candidate_url)
+                candidates.append(candidate_url)
+            except ValueError:
+                continue
 
         if len(candidates) == 1 and linux_gateway_ip:
             host_port = linux_gateway_ip if not parsed.port else f"{linux_gateway_ip}:{parsed.port}"
@@ -363,7 +375,11 @@ class OllamaBackend(BaseBackend):
                     )
                     resp.raise_for_status()
                     data = resp.json()
-                    text = (data.get("response") or "").strip() or "No model response."
+                    text = (data.get("response") or "").strip()
+                    if not text:
+                        raise BackendUnavailableError(
+                            f"Model backend at {candidate_url} returned an empty response for model {model_name}."
+                        )
                     self._preferred_url = candidate_url
                     self._mark_url_success(candidate_url)
                     return text, model_name

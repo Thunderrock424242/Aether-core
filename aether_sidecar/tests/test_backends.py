@@ -120,6 +120,26 @@ async def test_candidate_urls_include_detected_linux_gateway_when_aliases_do_not
 
 
 @pytest.mark.anyio
+async def test_candidate_urls_keep_numeric_host_candidates_when_dns_lookup_fails(monkeypatch):
+    monkeypatch.delenv("AETHER_DOCKER_HOST_GATEWAY", raising=False)
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: "172.31.10.3"))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        raise socket.gaierror("name not known")
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
+
+    assert backend.candidate_urls() == [
+        "http://127.0.0.1:11434/api/generate",
+        "http://172.31.10.3:11434/api/generate",
+        "http://172.17.0.1:11434/api/generate",
+        "http://192.168.65.1:11434/api/generate",
+    ]
+
+
+@pytest.mark.anyio
 async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
     monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
     monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
@@ -156,6 +176,34 @@ async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
     assert text == "ready"
     assert model_name == "llama3.1:8b"
     assert calls == [local_url, ollama_service_url, aether_ollama_service_url, docker_host_url]
+
+
+@pytest.mark.anyio
+async def test_generate_raises_when_backend_returns_empty_response(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    calls = []
+    local_url = "http://127.0.0.1:11434/api/generate"
+    backend = OllamaBackend(local_url, "llama3.1:8b")
+
+    responses_by_url = {
+        local_url: _FakeResponse({"response": ""}),
+    }
+
+    def fake_client_factory(*args, **kwargs):
+        return _FakeAsyncClient(responses_by_url, calls)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client_factory)
+
+    with pytest.raises(BackendUnavailableError) as exc_info:
+        await backend.generate("hello", Subsystem.AEGIS)
+
+    assert "returned an empty response" in str(exc_info.value)
 
 
 @pytest.mark.anyio
