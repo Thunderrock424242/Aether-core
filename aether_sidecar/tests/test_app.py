@@ -16,6 +16,9 @@ class FakeBackend:
     async def warmup(self, subsystem):
         return f"fake-{subsystem.value.lower()}"
 
+    def connection_attempt_chain(self):
+        return ["http://127.0.0.1:11434/api/generate", "http://localhost:11434/api/generate"]
+
     async def generate(self, prompt: str, subsystem):
         scope = "general" if "Request scope: general-conversation" in prompt else "minecraft"
         return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}"
@@ -95,6 +98,7 @@ def test_status_reports_model_online_with_runtime_details():
     assert body["status"] == "ok"
     assert body["model"]["status"] == "online"
     assert body["model"]["checked_model"] == "fake-aegis"
+    assert body["model"]["attempted_urls"] == ["http://127.0.0.1:11434/api/generate", "http://localhost:11434/api/generate"]
     assert body["uptime_seconds"] >= 0
 
 
@@ -111,6 +115,24 @@ def test_status_reports_model_offline_when_backend_unavailable():
     body = response.json()
     assert body["model"]["status"] == "offline"
     assert body["model"]["detail"] == "backend down"
+    assert body["model"]["attempted_urls"] == []
+
+
+
+def test_status_handles_invalid_connection_attempt_chain_payload():
+    class WeirdBackend:
+        async def warmup(self, subsystem):
+            return "weird-model"
+
+        def connection_attempt_chain(self):
+            return "not-a-list"
+
+    app_module.backend = WeirdBackend()
+
+    response = client.get("/status")
+
+    assert response.status_code == 200
+    assert response.json()["model"]["attempted_urls"] == []
 
 def test_backend_warmup_endpoint_returns_ready():
     response = client.post("/backend/warmup", params={"subsystem": "Terra"})
