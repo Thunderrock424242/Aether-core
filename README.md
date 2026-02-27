@@ -68,6 +68,10 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_DOCKER_HOST_GATEWAY=` optional explicit Docker host gateway (for example `172.17.0.1`) if your environment uses a custom bridge route.
 - `AETHER_OLLAMA_FALLBACK_URLS=` optional comma-separated backup Ollama endpoints (for example `http://host.docker.internal:11434/api/generate,http://172.17.0.1:11434/api/generate`) tried before auto-detected container host aliases.
 - `AETHER_OLLAMA_KEEP_ALIVE=15m` keeps models warm in Ollama so first-token latency stays low during idle periods.
+- `AETHER_MODEL_AUTO_SELECT=false` enables hardware-aware model auto-selection at startup.
+- `AETHER_MODEL_AUTO_PROFILE=auto` uses memory-based tiering (`auto`) or forces a tier (`low`, `mid`, `high`).
+- `AETHER_MODEL_AUTO_CANDIDATES=high:qwen2.5-coder:14b,mid:qwen2.5-coder:7b,low:llama3.1:8b` maps model tiers to Ollama model names.
+- `AETHER_MODEL_AUTO_RAM_GB_HIGH=24` / `AETHER_MODEL_AUTO_RAM_GB_MID=12` tune RAM thresholds used when `AETHER_MODEL_AUTO_PROFILE=auto`.
 
 ## Teaching playground shortcut
 Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to teach a lesson.
