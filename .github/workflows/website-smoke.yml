@@ -1,5 +1,8 @@
 name: Sidecar Website Smoke Test
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
