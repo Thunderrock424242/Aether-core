@@ -7,6 +7,11 @@ from aether_sidecar.backends import BackendUnavailableError, OllamaBackend
 from aether_sidecar.models import Subsystem
 
 
+@pytest.fixture(autouse=True)
+def force_containerized_runtime(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_is_containerized_runtime", staticmethod(lambda: True))
+
+
 class _FakeResponse:
     def __init__(self, data: dict[str, str], status_code: int = 200):
         self._data = data
@@ -356,3 +361,52 @@ def test_candidate_from_host_token_skips_wildcard_bind_addresses():
 
     assert OllamaBackend._candidate_from_host_token("0.0.0.0:11434", parsed) is None
     assert OllamaBackend._candidate_from_host_token("::", parsed) is None
+
+
+@pytest.mark.anyio
+async def test_candidate_urls_on_host_runtime_avoids_container_aliases_for_loopback(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_is_containerized_runtime", staticmethod(lambda: False))
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
+
+    assert backend.candidate_urls() == [
+        "http://127.0.0.1:11434/api/generate",
+        "http://localhost:11434/api/generate",
+    ]
+
+
+@pytest.mark.anyio
+async def test_candidate_urls_on_host_runtime_keeps_env_and_fallback_urls(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_is_containerized_runtime", staticmethod(lambda: False))
+    monkeypatch.setenv("OLLAMA_HOST", "http://10.10.10.20:11434")
+    backend = OllamaBackend(
+        "http://127.0.0.1:11434/api/generate",
+        "llama3.1:8b",
+        fallback_urls=["http://10.0.2.2:11434/api/generate"],
+    )
+
+    assert backend.candidate_urls() == [
+        "http://127.0.0.1:11434/api/generate",
+        "http://10.10.10.20:11434/api/generate",
+        "http://10.0.2.2:11434/api/generate",
+        "http://localhost:11434/api/generate",
+    ]
+
+
+
+
+def test_eligible_candidate_urls_skips_backoff_entries_when_possible(monkeypatch):
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b", failure_backoff_seconds=30.0)
+    monkeypatch.setattr(backend, "candidate_urls", lambda: ["a", "b", "c"])
+    backend._url_backoff_until = {"a": 200.0, "b": 50.0}
+    monkeypatch.setattr("aether_sidecar.backends.time.monotonic", lambda: 100.0)
+
+    assert backend._eligible_candidate_urls() == ["b", "c"]
+
+
+def test_eligible_candidate_urls_returns_full_list_when_all_backed_off(monkeypatch):
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b", failure_backoff_seconds=30.0)
+    monkeypatch.setattr(backend, "candidate_urls", lambda: ["a", "b"])
+    backend._url_backoff_until = {"a": 200.0, "b": 150.0}
+    monkeypatch.setattr("aether_sidecar.backends.time.monotonic", lambda: 100.0)
+
+    assert backend._eligible_candidate_urls() == ["a", "b"]
