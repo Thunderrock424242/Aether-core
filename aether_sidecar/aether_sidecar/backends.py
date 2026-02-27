@@ -2,6 +2,7 @@ from urllib.parse import urlparse, urlunparse
 
 import os
 import socket
+import time
 from ipaddress import IPv4Address
 
 import httpx
@@ -39,6 +40,7 @@ class OllamaBackend(BaseBackend):
         subsystem_models: dict[Subsystem, str] | None = None,
         keep_alive: str = "15m",
         fallback_urls: list[str] | None = None,
+        failure_backoff_seconds: float = 30.0,
     ):
         self.base_url = base_url
         self.model_name = model_name
@@ -46,7 +48,9 @@ class OllamaBackend(BaseBackend):
         self.subsystem_models = subsystem_models or {}
         self.keep_alive = keep_alive
         self.fallback_urls = fallback_urls or []
+        self.failure_backoff_seconds = max(0.0, failure_backoff_seconds)
         self._preferred_url: str | None = None
+        self._url_backoff_until: dict[str, float] = {}
 
     def _client_timeout(self) -> httpx.Timeout:
         """
@@ -57,6 +61,18 @@ class OllamaBackend(BaseBackend):
         slower first-token/model-load latency.
         """
         return httpx.Timeout(connect=3.0, read=self.timeout_seconds, write=10.0, pool=10.0)
+
+    @staticmethod
+    def _is_containerized_runtime() -> bool:
+        """Best-effort check for containerized runtime contexts."""
+        if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+            return True
+
+        container_env = os.getenv("container", "").strip().lower()
+        if container_env in {"docker", "podman", "container"}:
+            return True
+
+        return bool(os.getenv("KUBERNETES_SERVICE_HOST"))
 
     @staticmethod
     def _detect_linux_docker_gateway() -> str | None:
@@ -108,7 +124,6 @@ class OllamaBackend(BaseBackend):
 
         return None
 
-
     @staticmethod
     def _candidate_from_host_token(token: str, parsed_base) -> str | None:
         value = token.strip()
@@ -120,7 +135,9 @@ class OllamaBackend(BaseBackend):
             if not parsed.netloc:
                 return None
             path = parsed.path or parsed_base.path
-            return urlunparse((parsed.scheme or parsed_base.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment))
+            return urlunparse(
+                (parsed.scheme or parsed_base.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment)
+            )
 
         host_port = value.split("/", 1)[0]
         if not host_port:
@@ -137,7 +154,9 @@ class OllamaBackend(BaseBackend):
         if ":" not in host_port and parsed_base.port:
             host_port = f"{host_port}:{parsed_base.port}"
 
-        return urlunparse((parsed_base.scheme, host_port, parsed_base.path, parsed_base.params, parsed_base.query, parsed_base.fragment))
+        return urlunparse(
+            (parsed_base.scheme, host_port, parsed_base.path, parsed_base.params, parsed_base.query, parsed_base.fragment)
+        )
 
     def _env_discovered_candidates(self, parsed_base) -> list[str]:
         discovered: list[str] = []
@@ -200,6 +219,27 @@ class OllamaBackend(BaseBackend):
             "192.168.65.1",
         }
         if hostname not in local_aliases:
+            return self._dedupe_urls(candidates)
+
+        if not self._is_containerized_runtime():
+            if hostname == "127.0.0.1":
+                localhost_netloc = "localhost"
+                if parsed.port:
+                    localhost_netloc = f"{localhost_netloc}:{parsed.port}"
+                candidates.append(
+                    urlunparse(
+                        (parsed.scheme, localhost_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+                    )
+                )
+            elif hostname == "localhost":
+                localhost_netloc = "127.0.0.1"
+                if parsed.port:
+                    localhost_netloc = f"{localhost_netloc}:{parsed.port}"
+                candidates.append(
+                    urlunparse(
+                        (parsed.scheme, localhost_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+                    )
+                )
             return self._dedupe_urls(candidates)
 
         hostnames = [
@@ -265,6 +305,22 @@ class OllamaBackend(BaseBackend):
 
         return self._dedupe_urls(candidates)
 
+
+    def _mark_url_failure(self, url: str) -> None:
+        if self.failure_backoff_seconds <= 0:
+            return
+
+        self._url_backoff_until[url] = time.monotonic() + self.failure_backoff_seconds
+
+    def _mark_url_success(self, url: str) -> None:
+        self._url_backoff_until.pop(url, None)
+
+    def _eligible_candidate_urls(self) -> list[str]:
+        candidates = self.candidate_urls()
+        now = time.monotonic()
+        eligible = [url for url in candidates if self._url_backoff_until.get(url, 0.0) <= now]
+        return eligible or candidates
+
     def model_for_subsystem(self, subsystem: Subsystem) -> str:
         return self.subsystem_models.get(subsystem, self.model_name)
 
@@ -278,7 +334,7 @@ class OllamaBackend(BaseBackend):
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
         model_name = self.model_for_subsystem(subsystem)
         request_failures: list[tuple[str, httpx.RequestError]] = []
-        for candidate_url in self.candidate_urls():
+        for candidate_url in self._eligible_candidate_urls():
             try:
                 async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
@@ -292,12 +348,14 @@ class OllamaBackend(BaseBackend):
                     )
                     resp.raise_for_status()
                 self._preferred_url = candidate_url
+                self._mark_url_success(candidate_url)
                 return model_name
             except httpx.HTTPStatusError as exc:
                 raise BackendUnavailableError(
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
+                self._mark_url_failure(candidate_url)
                 request_failures.append((candidate_url, exc))
 
         if request_failures:
@@ -308,7 +366,7 @@ class OllamaBackend(BaseBackend):
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str]:
         model_name = self.model_for_subsystem(subsystem)
         request_failures: list[tuple[str, httpx.RequestError]] = []
-        for candidate_url in self.candidate_urls():
+        for candidate_url in self._eligible_candidate_urls():
             try:
                 async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
                     resp = await client.post(
@@ -324,12 +382,14 @@ class OllamaBackend(BaseBackend):
                     data = resp.json()
                     text = (data.get("response") or "").strip() or "No model response."
                     self._preferred_url = candidate_url
+                    self._mark_url_success(candidate_url)
                     return text, model_name
             except httpx.HTTPStatusError as exc:
                 raise BackendUnavailableError(
                     f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
                 ) from exc
             except httpx.RequestError as exc:
+                self._mark_url_failure(candidate_url)
                 request_failures.append((candidate_url, exc))
 
         if request_failures:
