@@ -34,8 +34,11 @@ class ModKnowledgeScannerTest {
         HostingConfig config = new HostingConfig(
                 true,
                 true,
+                BackendMode.AUTO,
+                "http://127.0.0.1:8765",
                 true,
                 "http://127.0.0.1:8765",
+                "https://ollama.com/download",
                 List.of("echo", "start"),
                 Path.of("."),
                 true,
