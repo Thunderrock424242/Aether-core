@@ -221,27 +221,6 @@ class OllamaBackend(BaseBackend):
         if hostname not in local_aliases:
             return self._dedupe_urls(candidates)
 
-        if not self._is_containerized_runtime():
-            if hostname == "127.0.0.1":
-                localhost_netloc = "localhost"
-                if parsed.port:
-                    localhost_netloc = f"{localhost_netloc}:{parsed.port}"
-                candidates.append(
-                    urlunparse(
-                        (parsed.scheme, localhost_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
-                    )
-                )
-            elif hostname == "localhost":
-                localhost_netloc = "127.0.0.1"
-                if parsed.port:
-                    localhost_netloc = f"{localhost_netloc}:{parsed.port}"
-                candidates.append(
-                    urlunparse(
-                        (parsed.scheme, localhost_netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
-                    )
-                )
-            return self._dedupe_urls(candidates)
-
         hostnames = [
             "ollama",
             "aether-ollama",
@@ -323,6 +302,10 @@ class OllamaBackend(BaseBackend):
 
     def model_for_subsystem(self, subsystem: Subsystem) -> str:
         return self.subsystem_models.get(subsystem, self.model_name)
+
+    def connection_attempt_chain(self) -> list[str]:
+        """Return backend URLs in the same order generate/warmup will try them."""
+        return self._eligible_candidate_urls()
 
     @staticmethod
     def _format_request_failures(request_failures: list[tuple[str, httpx.RequestError]]) -> str:

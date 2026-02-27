@@ -364,20 +364,41 @@ def test_candidate_from_host_token_skips_wildcard_bind_addresses():
 
 
 @pytest.mark.anyio
-async def test_candidate_urls_on_host_runtime_avoids_container_aliases_for_loopback(monkeypatch):
+async def test_candidate_urls_on_host_runtime_still_tries_container_aliases_for_loopback(monkeypatch):
     monkeypatch.setattr(OllamaBackend, "_is_containerized_runtime", staticmethod(lambda: False))
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
     backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
 
     assert backend.candidate_urls() == [
         "http://127.0.0.1:11434/api/generate",
+        "http://ollama:11434/api/generate",
+        "http://aether-ollama:11434/api/generate",
+        "http://host.docker.internal:11434/api/generate",
+        "http://gateway.docker.internal:11434/api/generate",
+        "http://host.containers.internal:11434/api/generate",
         "http://localhost:11434/api/generate",
+        "http://172.17.0.1:11434/api/generate",
+        "http://192.168.65.1:11434/api/generate",
     ]
 
 
 @pytest.mark.anyio
 async def test_candidate_urls_on_host_runtime_keeps_env_and_fallback_urls(monkeypatch):
     monkeypatch.setattr(OllamaBackend, "_is_containerized_runtime", staticmethod(lambda: False))
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
     monkeypatch.setenv("OLLAMA_HOST", "http://10.10.10.20:11434")
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
     backend = OllamaBackend(
         "http://127.0.0.1:11434/api/generate",
         "llama3.1:8b",
@@ -388,7 +409,14 @@ async def test_candidate_urls_on_host_runtime_keeps_env_and_fallback_urls(monkey
         "http://127.0.0.1:11434/api/generate",
         "http://10.10.10.20:11434/api/generate",
         "http://10.0.2.2:11434/api/generate",
+        "http://ollama:11434/api/generate",
+        "http://aether-ollama:11434/api/generate",
+        "http://host.docker.internal:11434/api/generate",
+        "http://gateway.docker.internal:11434/api/generate",
+        "http://host.containers.internal:11434/api/generate",
         "http://localhost:11434/api/generate",
+        "http://172.17.0.1:11434/api/generate",
+        "http://192.168.65.1:11434/api/generate",
     ]
 
 
@@ -410,3 +438,10 @@ def test_eligible_candidate_urls_returns_full_list_when_all_backed_off(monkeypat
     monkeypatch.setattr("aether_sidecar.backends.time.monotonic", lambda: 100.0)
 
     assert backend._eligible_candidate_urls() == ["a", "b"]
+
+
+def test_connection_attempt_chain_matches_eligible_candidate_urls(monkeypatch):
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
+    monkeypatch.setattr(backend, "_eligible_candidate_urls", lambda: ["a", "b"])
+
+    assert backend.connection_attempt_chain() == ["a", "b"]

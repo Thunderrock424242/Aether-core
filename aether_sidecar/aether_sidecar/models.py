@@ -92,6 +92,7 @@ class ModelStatusResponse(BaseModel):
     detail: str | None = None
     checked_model: str
     latency_ms: int | None = None
+    attempted_urls: list[str] = Field(default_factory=list)
 
 
 class StatusResponse(BaseModel):

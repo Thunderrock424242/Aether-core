@@ -95,15 +95,28 @@ def _validate_dev_playground_token(token: str | None) -> None:
         raise HTTPException(status_code=401, detail="invalid playground token")
 
 
+
+
+def _backend_attempt_chain() -> list[str]:
+    get_chain = getattr(backend, "connection_attempt_chain", None)
+    if not callable(get_chain):
+        return []
+
+    chain = get_chain()
+    return chain if isinstance(chain, list) else []
+
+
 @app.get("/status", response_model=StatusResponse)
 async def status() -> StatusResponse:
     status_start = time.perf_counter()
+    attempt_chain = _backend_attempt_chain()
     try:
         checked_model = await backend.warmup(Subsystem.AEGIS)
         model_status = ModelStatusResponse(
             status="online",
             checked_model=checked_model,
             latency_ms=int((time.perf_counter() - status_start) * 1000),
+            attempted_urls=attempt_chain,
         )
     except BackendUnavailableError as exc:
         model_status = ModelStatusResponse(
@@ -111,6 +124,7 @@ async def status() -> StatusResponse:
             detail=str(exc),
             checked_model=resolved_model_name,
             latency_ms=int((time.perf_counter() - status_start) * 1000),
+            attempted_urls=attempt_chain,
         )
 
     return StatusResponse(
@@ -306,10 +320,11 @@ async def status_page() -> HTMLResponse:
           : 'Not required';
         setPill(document.getElementById('hooksPill'), hookActive, 'healthy', 'waiting');
 
+        const attemptChain = Array.isArray(data.model.attempted_urls) ? data.model.attempted_urls.join(' -> ') : '';
         addEvent(
           online
-            ? `Model backend responded in ${data.model.latency_ms} ms.`
-            : `Model backend offline: ${data.model.detail || 'unavailable'}`
+            ? `Model backend responded in ${data.model.latency_ms} ms.${attemptChain ? ` Attempt order: ${attemptChain}` : ''}`
+            : `Model backend offline: ${data.model.detail || 'unavailable'}${attemptChain ? `. Attempt order: ${attemptChain}` : ''}`
         );
       } catch (error) {
         document.getElementById('headline').textContent = 'Status check failed';
