@@ -52,6 +52,7 @@ def test_generate_returns_keyword_alerts():
     assert body["subsystem_used"] == "Eclipse"
     assert "Eclipse" in body["subsystem_alerts"]
     assert "anomaly" in body["subsystem_alerts"]["Eclipse"]
+    assert body["assistant_name"] == "Eclipse"
     assert body["model_used"] == "fake-eclipse"
     assert "[minecraft]" in body["text"]
 
@@ -68,10 +69,30 @@ def test_generate_non_minecraft_message_returns_aether_smalltalk_reply():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["subsystem_used"] == "Aegis"
-    assert body["model_used"] == "fake-aegis"
+    assert body["subsystem_used"] == "AetherCore"
+    assert body["assistant_name"] == "Aether Core"
+    assert body["model_used"] == "fake-aethercore"
     assert "[general]" in body["text"]
 
+
+
+
+def test_generate_discord_message_routes_to_discord_bot():
+    response = client.post(
+        "/generate",
+        json={
+            "message": "Help me write a Discord bot slash command for moderation",
+            "subsystem": "Auto",
+            "session_id": "test-session-discord",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subsystem_used"] == "DiscordBot"
+    assert body["assistant_name"] == "Discord Bot"
+    assert body["model_used"] == "fake-discordbot"
+    assert "[general]" in body["text"]
 
 def test_metrics_endpoint_available():
     response = client.get("/metrics")

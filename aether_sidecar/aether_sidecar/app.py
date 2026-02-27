@@ -26,7 +26,13 @@ from .models import (
     WarmupResponse,
 )
 from .observability import GENERATE_REQUESTS, metrics_middleware, metrics_response
-from .router import detect_subsystem_alerts, is_minecraft_related, pick_subsystem, subsystem_teaching_context
+from .router import (
+    assistant_name_for_subsystem,
+    detect_subsystem_alerts,
+    is_minecraft_related,
+    pick_subsystem,
+    subsystem_teaching_context,
+)
 from .safety import evaluate_message, safe_refusal
 
 
@@ -518,7 +524,7 @@ async def dev_playground() -> HTMLResponse:
   <fieldset>
     <legend>Chat</legend>
     <div class="row">
-      <div><label>Subsystem</label><select id="subsystem"><option>Auto</option><option>Aegis</option><option>Eclipse</option><option>Terra</option><option>Helios</option><option>Enforcer</option><option>Requiem</option></select></div>
+      <div><label>Subsystem</label><select id="subsystem"><option>Auto</option><option>AetherCore</option><option>Java</option><option>DiscordBot</option><option>Aegis</option><option>Eclipse</option><option>Terra</option><option>Helios</option><option>Enforcer</option><option>Requiem</option></select></div>
       <div><label>Message</label><input id="message" placeholder="Ask the model..."></div>
     </div>
     <div class="inline">
@@ -668,6 +674,7 @@ async def generate(
         GENERATE_REQUESTS.labels(subsystem.value, "true").inc()
         return GenerateResponse(
             text=safe_refusal(),
+            assistant_name=assistant_name_for_subsystem(subsystem),
             subsystem_used=subsystem,
             model_used=(subsystem_models.get(subsystem) or resolved_model_name),
             subsystem_alerts={k.value: v for k, v in alerts.items()},
@@ -705,6 +712,7 @@ async def generate(
 
     return GenerateResponse(
         text=text,
+        assistant_name=assistant_name_for_subsystem(subsystem),
         subsystem_used=subsystem,
         model_used=model_used,
         subsystem_alerts={k.value: v for k, v in alerts.items()},

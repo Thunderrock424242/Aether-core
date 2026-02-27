@@ -19,12 +19,14 @@ class DummySettings:
 
 def test_parse_subsystem_models_valid_entries_only():
     parsed = parse_subsystem_models(
-        "Eclipse:eclipse-model, terra : terra-model , invalid, Auto:auto-model,Helios:"
+        "Eclipse:eclipse-model, terra : terra-model , discord:discord-model, aether-core:core-model, invalid, Auto:auto-model,Helios:"
     )
 
     assert parsed == {
         Subsystem.ECLIPSE: "eclipse-model",
         Subsystem.TERRA: "terra-model",
+        Subsystem.DISCORD: "discord-model",
+        Subsystem.CORE: "core-model",
     }
 
 

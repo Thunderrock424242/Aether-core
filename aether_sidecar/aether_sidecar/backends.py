@@ -10,6 +10,9 @@ import httpx
 from .models import Subsystem
 
 SYSTEM_PROMPTS = {
+    Subsystem.CORE: "You are Aether Core, the main AI backend and orchestration assistant.",
+    Subsystem.JAVA: "You are Java, focused on Java integration and Minecraft NeoForge/Gradle mod workflows.",
+    Subsystem.DISCORD: "You are Discord Bot, focused on Discord bot features, commands, and automation.",
     Subsystem.AEGIS: "You are Aegis, focused on safety and hazard prevention in Minecraft.",
     Subsystem.ECLIPSE: "You are Eclipse, focused on anomaly and rift risk interpretation.",
     Subsystem.TERRA: "You are Terra, focused on terrain, scouting, and restoration.",

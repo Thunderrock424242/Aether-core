@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 
 
 class Subsystem(str, Enum):
+    CORE = "AetherCore"
+    JAVA = "Java"
+    DISCORD = "DiscordBot"
     AEGIS = "Aegis"
     ECLIPSE = "Eclipse"
     TERRA = "Terra"
@@ -62,6 +65,7 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     text: str
+    assistant_name: str
     subsystem_used: Subsystem
     model_used: str
     subsystem_alerts: dict[str, list[str]] = Field(default_factory=dict)

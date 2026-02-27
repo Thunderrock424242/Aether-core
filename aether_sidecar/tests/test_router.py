@@ -1,5 +1,11 @@
 from aether_sidecar.models import Subsystem
-from aether_sidecar.router import detect_subsystem_alerts, is_minecraft_related, subsystem_teaching_context
+from aether_sidecar.router import (
+    assistant_name_for_subsystem,
+    detect_subsystem_alerts,
+    is_minecraft_related,
+    pick_subsystem,
+    subsystem_teaching_context,
+)
 
 
 def test_subsystem_teaching_context_includes_purpose_and_keywords():
@@ -24,3 +30,15 @@ def test_is_minecraft_related_true_for_minecraft_context():
 
 def test_is_minecraft_related_false_for_smalltalk():
     assert not is_minecraft_related("How are you doing today?")
+
+
+def test_pick_subsystem_defaults_to_core_for_smalltalk():
+    assert pick_subsystem("How is your day going?") == Subsystem.CORE
+
+
+def test_assistant_name_for_discord_bot_subsystem():
+    assert assistant_name_for_subsystem(Subsystem.DISCORD) == "Discord Bot"
+
+
+def test_is_minecraft_related_false_for_discord_only_request():
+    assert not is_minecraft_related("Can you help me set up a Discord bot?")

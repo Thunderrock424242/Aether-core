@@ -43,7 +43,17 @@ def parse_subsystem_models(raw: str) -> dict[Subsystem, str]:
     if not raw.strip():
         return mapping
 
-    by_name = {subsystem.value.lower(): subsystem for subsystem in Subsystem if subsystem != Subsystem.AUTO}
+    by_name: dict[str, Subsystem] = {}
+    for subsystem in Subsystem:
+        if subsystem == Subsystem.AUTO:
+            continue
+        by_name[subsystem.value.lower()] = subsystem
+        by_name[subsystem.name.lower()] = subsystem
+
+    by_name["aether-core"] = Subsystem.CORE
+    by_name["aethercore"] = Subsystem.CORE
+    by_name["discord"] = Subsystem.DISCORD
+    by_name["discord-bot"] = Subsystem.DISCORD
     for token in raw.split(","):
         entry = token.strip()
         if not entry:
