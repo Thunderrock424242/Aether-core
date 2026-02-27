@@ -108,6 +108,54 @@ class OllamaBackend(BaseBackend):
 
         return None
 
+
+    @staticmethod
+    def _candidate_from_host_token(token: str, parsed_base) -> str | None:
+        value = token.strip()
+        if not value:
+            return None
+
+        if "://" in value:
+            parsed = urlparse(value)
+            if not parsed.netloc:
+                return None
+            path = parsed.path or parsed_base.path
+            return urlunparse((parsed.scheme or parsed_base.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment))
+
+        host_port = value.split("/", 1)[0]
+        if not host_port:
+            return None
+
+        normalized = host_port.strip().lower()
+        if normalized in {"::", "[::]"} or normalized.startswith("[::]:"):
+            return None
+
+        host_only = host_port.split(":", 1)[0].lower()
+        if host_only in {"0.0.0.0", "::"}:
+            return None
+
+        if ":" not in host_port and parsed_base.port:
+            host_port = f"{host_port}:{parsed_base.port}"
+
+        return urlunparse((parsed_base.scheme, host_port, parsed_base.path, parsed_base.params, parsed_base.query, parsed_base.fragment))
+
+    def _env_discovered_candidates(self, parsed_base) -> list[str]:
+        discovered: list[str] = []
+        for env_key in ("AETHER_OLLAMA_URL", "OLLAMA_URL", "OLLAMA_HOST"):
+            raw = os.getenv(env_key, "")
+            candidate = self._candidate_from_host_token(raw, parsed_base)
+            if candidate:
+                discovered.append(candidate)
+
+        fallback_env = os.getenv("AETHER_OLLAMA_FALLBACK_URLS", "")
+        if fallback_env:
+            for token in fallback_env.split(","):
+                candidate = self._candidate_from_host_token(token, parsed_base)
+                if candidate:
+                    discovered.append(candidate)
+
+        return self._dedupe_urls(discovered)
+
     @staticmethod
     def _dedupe_urls(urls: list[str]) -> list[str]:
         deduped: list[str] = []
@@ -133,6 +181,10 @@ class OllamaBackend(BaseBackend):
             candidates.append(self._preferred_url)
         candidates.append(self.base_url)
 
+        discovered_from_env = self._env_discovered_candidates(parsed)
+        if discovered_from_env:
+            candidates.extend(discovered_from_env)
+
         if self.fallback_urls:
             candidates.extend(self.fallback_urls)
 
@@ -142,6 +194,8 @@ class OllamaBackend(BaseBackend):
             "host.docker.internal",
             "gateway.docker.internal",
             "host.containers.internal",
+            "ollama",
+            "aether-ollama",
             "172.17.0.1",
             "192.168.65.1",
         }
@@ -149,6 +203,8 @@ class OllamaBackend(BaseBackend):
             return self._dedupe_urls(candidates)
 
         hostnames = [
+            "ollama",
+            "aether-ollama",
             "host.docker.internal",
             "gateway.docker.internal",
             "host.containers.internal",
