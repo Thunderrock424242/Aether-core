@@ -24,6 +24,12 @@ Windows PowerShell quick start:
 .\scripts\run_sidecar_dev.ps1
 ```
 
+If your shell is already inside `aether_sidecar` (for example `(.venv) PS ...\aether_sidecar>`), you can run the sidecar directly:
+
+```powershell
+python -m uvicorn aether_sidecar.app:app --host 127.0.0.1 --port 8765 --reload
+```
+
 Helpful environment flags for day-to-day dev:
 - `AETHER_DEV_RELOAD=true` (default) to auto-reload when Python files change.
 - `AETHER_HOST=0.0.0.0` to expose the sidecar for local network/device testing.
