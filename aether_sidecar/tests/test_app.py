@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from aether_sidecar import app as app_module
-from aether_sidecar.backends import BackendUnavailableError
+from aether_sidecar.backends import BackendAttemptSummary, BackendUnavailableError
 from aether_sidecar.config import settings
 
 activation_registry = app_module.activation_registry
@@ -21,7 +21,7 @@ class FakeBackend:
 
     async def generate(self, prompt: str, subsystem):
         scope = "general" if "Request scope: general-conversation" in prompt else "minecraft"
-        return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}"
+        return f"[{scope}] simulated model response", f"fake-{subsystem.value.lower()}", BackendAttemptSummary()
 
 
 def setup_function() -> None:
@@ -77,6 +77,9 @@ def test_metrics_endpoint_available():
     response = client.get("/metrics")
     assert response.status_code == 200
     assert "aether_http_requests_total" in response.text
+    assert "aether_backend_attempts_total" in response.text
+    assert "aether_backend_attempt_latency_seconds" in response.text
+    assert "aether_generate_fallback_hops" in response.text
 
 
 def test_health_returns_keep_alive_setting():

@@ -16,6 +16,9 @@ The sidecar now exposes `GET /metrics` with Prometheus metrics such as:
 - `aether_http_requests_total`
 - `aether_http_request_latency_seconds`
 - `aether_generate_requests_total`
+- `aether_backend_attempts_total`
+- `aether_backend_attempt_latency_seconds`
+- `aether_generate_fallback_hops`
 
 ## Start stack
 
