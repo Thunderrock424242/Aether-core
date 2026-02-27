@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     learning_log_path: str | None = None
     safety_enabled: bool = True
     ollama_url: str = "http://127.0.0.1:11434/api/generate"
+    ollama_fallback_urls: str = ""
     ollama_keep_alive: str = "15m"
     app_version: str = Field(default="0.1.0")
     activation_hook_enabled: bool = False
@@ -51,3 +52,16 @@ def parse_subsystem_models(raw: str) -> dict[Subsystem, str]:
             mapping[subsystem] = model_name
 
     return mapping
+
+
+def parse_ollama_fallback_urls(raw: str) -> list[str]:
+    if not raw.strip():
+        return []
+
+    deduped: list[str] = []
+    for token in raw.split(","):
+        entry = token.strip()
+        if entry and entry not in deduped:
+            deduped.append(entry)
+
+    return deduped
