@@ -34,8 +34,8 @@ public final class AetherClient {
         Objects.requireNonNull(prompt, "prompt");
         String payload = "{" +
                 "\"session_id\":\"" + escapeJson(sessionId) + "\"," +
-                "\"prompt\":\"" + escapeJson(prompt) + "\"," +
-                "\"subsystem\":\"" + escapeJson(subsystem == null ? "Sentinel" : subsystem) + "\"" +
+                "\"message\":\"" + escapeJson(prompt) + "\"," +
+                "\"subsystem\":\"" + escapeJson(subsystem == null ? "Auto" : subsystem) + "\"" +
                 "}";
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(baseUri.resolve("/generate"))
