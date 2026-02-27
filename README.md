@@ -33,7 +33,8 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_LEARNING_LOG_PATH=.aether/learning_lessons.jsonl` to persist playground teaching lessons across sidecar restarts.
 - `AETHER_DEV_PLAYGROUND_ENABLED=false` keeps the dev-only browser playground disabled by default.
 - `AETHER_DEV_PLAYGROUND_TOKEN=` optional bearer token required by `/generate`, `/teach`, and `/learning/*` when set.
-- `AETHER_OLLAMA_URL=http://127.0.0.1:11434/api/generate` for native host runs; when sidecar runs in Docker/devcontainer, use `http://host.docker.internal:11434/api/generate`.
+- `AETHER_OLLAMA_URL=http://127.0.0.1:11434/api/generate` for native host runs; in containers the sidecar auto-tries `host.docker.internal`, `gateway.docker.internal`, and detected Linux bridge gateway IPs.
+- `AETHER_DOCKER_HOST_GATEWAY=` optional explicit Docker host gateway (for example `172.17.0.1`) if your environment uses a custom bridge route.
 - `AETHER_OLLAMA_KEEP_ALIVE=15m` keeps models warm in Ollama so first-token latency stays low during idle periods.
 
 ## Teaching playground shortcut
