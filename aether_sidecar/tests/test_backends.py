@@ -1,4 +1,5 @@
 import socket
+from urllib.parse import urlparse
 import httpx
 import pytest
 
@@ -55,6 +56,8 @@ async def test_candidate_urls_for_localhost_use_docker_host_fallbacks(monkeypatc
 
     assert backend.candidate_urls() == [
         "http://127.0.0.1:11434/api/generate",
+        "http://ollama:11434/api/generate",
+        "http://aether-ollama:11434/api/generate",
         "http://host.docker.internal:11434/api/generate",
         "http://gateway.docker.internal:11434/api/generate",
         "http://host.containers.internal:11434/api/generate",
@@ -78,6 +81,8 @@ async def test_candidate_urls_include_gateway_override(monkeypatch):
 
     assert backend.candidate_urls() == [
         "http://localhost:11434/api/generate",
+        "http://ollama:11434/api/generate",
+        "http://aether-ollama:11434/api/generate",
         "http://host.docker.internal:11434/api/generate",
         "http://gateway.docker.internal:11434/api/generate",
         "http://host.containers.internal:11434/api/generate",
@@ -94,7 +99,7 @@ async def test_candidate_urls_include_detected_linux_gateway_when_aliases_do_not
     monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
 
     def fake_getaddrinfo(host, port):
-        if host in {"host.docker.internal", "gateway.docker.internal", "host.containers.internal"}:
+        if host in {"ollama", "aether-ollama", "host.docker.internal", "gateway.docker.internal", "host.containers.internal"}:
             raise socket.gaierror("name not known")
         return [(None, None, None, None, (host, port))]
 
@@ -120,6 +125,8 @@ async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
     calls = []
     local_url = "http://127.0.0.1:11434/api/generate"
+    ollama_service_url = "http://ollama:11434/api/generate"
+    aether_ollama_service_url = "http://aether-ollama:11434/api/generate"
     docker_host_url = "http://host.docker.internal:11434/api/generate"
     containers_host_url = "http://host.containers.internal:11434/api/generate"
     gateway_host_url = "http://gateway.docker.internal:11434/api/generate"
@@ -127,6 +134,8 @@ async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
 
     responses_by_url = {
         local_url: httpx.ConnectError("connection refused", request=httpx.Request("POST", local_url)),
+        ollama_service_url: httpx.ConnectError("service unavailable", request=httpx.Request("POST", ollama_service_url)),
+        aether_ollama_service_url: httpx.ConnectError("service unavailable", request=httpx.Request("POST", aether_ollama_service_url)),
         docker_host_url: _FakeResponse({"response": "ready"}),
         containers_host_url: _FakeResponse({"response": "should not be called"}),
         gateway_host_url: _FakeResponse({"response": "should not be called"}),
@@ -141,7 +150,7 @@ async def test_generate_falls_back_to_host_docker_internal(monkeypatch):
 
     assert text == "ready"
     assert model_name == "llama3.1:8b"
-    assert calls == [local_url, docker_host_url]
+    assert calls == [local_url, ollama_service_url, aether_ollama_service_url, docker_host_url]
 
 
 @pytest.mark.anyio
@@ -155,6 +164,8 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
     calls = []
     local_url = "http://127.0.0.1:11434/api/generate"
+    ollama_service_url = "http://ollama:11434/api/generate"
+    aether_ollama_service_url = "http://aether-ollama:11434/api/generate"
     docker_host_url = "http://host.docker.internal:11434/api/generate"
     containers_host_url = "http://host.containers.internal:11434/api/generate"
     gateway_host_url = "http://gateway.docker.internal:11434/api/generate"
@@ -165,6 +176,12 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
 
     responses_by_url = {
         local_url: httpx.ConnectError("local unavailable", request=httpx.Request("POST", local_url)),
+        ollama_service_url: httpx.ConnectError(
+            "ollama service unavailable", request=httpx.Request("POST", ollama_service_url)
+        ),
+        aether_ollama_service_url: httpx.ConnectError(
+            "aether ollama service unavailable", request=httpx.Request("POST", aether_ollama_service_url)
+        ),
         docker_host_url: httpx.ConnectError(
             "docker host unavailable", request=httpx.Request("POST", docker_host_url)
         ),
@@ -196,6 +213,8 @@ async def test_generate_raises_after_all_candidate_urls_fail(monkeypatch):
     assert "Failed to contact model backend" in str(exc_info.value)
     assert calls == [
         local_url,
+        ollama_service_url,
+        aether_ollama_service_url,
         docker_host_url,
         gateway_host_url,
         containers_host_url,
@@ -261,6 +280,8 @@ async def test_generate_remembers_last_successful_url(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
 
     local_url = "http://127.0.0.1:11434/api/generate"
+    ollama_service_url = "http://ollama:11434/api/generate"
+    aether_ollama_service_url = "http://aether-ollama:11434/api/generate"
     docker_host_url = "http://host.docker.internal:11434/api/generate"
     backend = OllamaBackend(local_url, "llama3.1:8b")
 
@@ -268,6 +289,8 @@ async def test_generate_remembers_last_successful_url(monkeypatch):
 
     responses_by_url = {
         local_url: httpx.ConnectError("local unavailable", request=httpx.Request("POST", local_url)),
+        ollama_service_url: httpx.ConnectError("ollama service unavailable", request=httpx.Request("POST", ollama_service_url)),
+        aether_ollama_service_url: httpx.ConnectError("aether ollama service unavailable", request=httpx.Request("POST", aether_ollama_service_url)),
         docker_host_url: _FakeResponse({"response": "ok"}),
     }
 
@@ -279,8 +302,8 @@ async def test_generate_remembers_last_successful_url(monkeypatch):
     await backend.generate("hello", Subsystem.AEGIS)
     await backend.generate("hello again", Subsystem.AEGIS)
 
-    assert calls[:2] == [local_url, docker_host_url]
-    assert calls[2] == docker_host_url
+    assert calls[:4] == [local_url, ollama_service_url, aether_ollama_service_url, docker_host_url]
+    assert calls[4] == docker_host_url
 
 
 @pytest.mark.anyio
@@ -297,6 +320,8 @@ async def test_candidate_urls_for_host_docker_internal_still_tries_other_local_a
 
     assert backend.candidate_urls() == [
         "http://host.docker.internal:11434/api/generate",
+        "http://ollama:11434/api/generate",
+        "http://aether-ollama:11434/api/generate",
         "http://gateway.docker.internal:11434/api/generate",
         "http://host.containers.internal:11434/api/generate",
         "http://127.0.0.1:11434/api/generate",
@@ -304,3 +329,30 @@ async def test_candidate_urls_for_host_docker_internal_still_tries_other_local_a
         "http://172.17.0.1:11434/api/generate",
         "http://192.168.65.1:11434/api/generate",
     ]
+
+
+@pytest.mark.anyio
+async def test_candidate_urls_include_ollama_host_env_override(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "http://10.10.10.20:11434")
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("AETHER_OLLAMA_URL", raising=False)
+    monkeypatch.delenv("AETHER_OLLAMA_FALLBACK_URLS", raising=False)
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
+
+    urls = backend.candidate_urls()
+    assert urls[0] == "http://127.0.0.1:11434/api/generate"
+    assert urls[1] == "http://10.10.10.20:11434/api/generate"
+
+
+def test_candidate_from_host_token_skips_wildcard_bind_addresses():
+    parsed = urlparse("http://127.0.0.1:11434/api/generate")
+
+    assert OllamaBackend._candidate_from_host_token("0.0.0.0:11434", parsed) is None
+    assert OllamaBackend._candidate_from_host_token("::", parsed) is None
