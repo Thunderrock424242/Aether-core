@@ -70,6 +70,31 @@ class OllamaBackend(BaseBackend):
 
         return None
 
+    @staticmethod
+    def _detect_resolv_conf_nameserver() -> str | None:
+        """Best-effort fallback for devcontainer/WSL host gateway detection."""
+        resolv_conf = "/etc/resolv.conf"
+        if not os.path.exists(resolv_conf):
+            return None
+
+        try:
+            with open(resolv_conf, encoding="utf-8") as handle:
+                for line in handle:
+                    parts = line.strip().split()
+                    if len(parts) == 2 and parts[0] == "nameserver":
+                        candidate = parts[1]
+                        try:
+                            ip = IPv4Address(candidate)
+                        except ValueError:
+                            continue
+
+                        if ip.is_private:
+                            return str(ip)
+        except OSError:
+            return None
+
+        return None
+
     def candidate_urls(self) -> list[str]:
         """
         Return backend URLs to try in order.
@@ -86,6 +111,7 @@ class OllamaBackend(BaseBackend):
             return [self.base_url]
 
         hostnames = ["host.docker.internal", "gateway.docker.internal"]
+        fallback_ips = ["172.17.0.1", "192.168.65.1"]
         docker_host_override = os.getenv("AETHER_DOCKER_HOST_GATEWAY", "").strip()
         if docker_host_override:
             hostnames.append(docker_host_override)
@@ -93,6 +119,12 @@ class OllamaBackend(BaseBackend):
         linux_gateway_ip = self._detect_linux_docker_gateway()
         if linux_gateway_ip:
             hostnames.append(linux_gateway_ip)
+
+        resolv_conf_ip = self._detect_resolv_conf_nameserver()
+        if resolv_conf_ip:
+            hostnames.append(resolv_conf_ip)
+
+        hostnames.extend(fallback_ips)
 
         candidates = [self.base_url]
         for docker_host in hostnames:
