@@ -61,6 +61,95 @@ class OllamaBackend(BaseBackend):
         self.failure_backoff_seconds = max(0.0, failure_backoff_seconds)
         self._preferred_url: str | None = None
         self._url_backoff_until: dict[str, float] = {}
+        self._preferred_model_name: str | None = None
+
+
+    @staticmethod
+    def _looks_like_missing_model_error(exc: httpx.HTTPStatusError) -> bool:
+        if exc.response.status_code != 404:
+            return False
+
+        body = (exc.response.text or "").lower()
+        return "model" in body and "not found" in body
+
+    @staticmethod
+    def _tags_url_from_generate_url(generate_url: str) -> str:
+        parsed = urlparse(generate_url)
+        path = parsed.path or ""
+        if path.endswith("/api/generate"):
+            path = f"{path[:-len('/api/generate')]}/api/tags"
+        elif path.endswith("/generate"):
+            path = f"{path[:-len('/generate')]}/tags"
+        else:
+            path = "/api/tags"
+        return urlunparse((parsed.scheme, parsed.netloc, path, parsed.params, parsed.query, parsed.fragment))
+
+    @staticmethod
+    def _extract_tag_names(payload: dict) -> list[str]:
+        models = payload.get("models")
+        if not isinstance(models, list):
+            return []
+
+        names: list[str] = []
+        for model in models:
+            if isinstance(model, dict):
+                name = model.get("name")
+                if isinstance(name, str) and name.strip():
+                    names.append(name.strip())
+
+        deduped: list[str] = []
+        for name in names:
+            if name not in deduped:
+                deduped.append(name)
+        return deduped
+
+    async def _discover_available_models(self, candidate_url: str) -> list[str]:
+        tags_url = self._tags_url_from_generate_url(candidate_url)
+        try:
+            async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
+                response = await client.get(tags_url)
+                response.raise_for_status()
+                payload = response.json()
+            if isinstance(payload, dict):
+                return self._extract_tag_names(payload)
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError):
+            return []
+
+        return []
+
+    @staticmethod
+    def _pick_fallback_model(requested_model: str, available_models: list[str]) -> str | None:
+        if not available_models:
+            return None
+
+        if requested_model in available_models:
+            return requested_model
+
+        requested_repo = requested_model.split(":", 1)[0].strip().lower()
+        if requested_repo:
+            same_repo = [model for model in available_models if model.split(":", 1)[0].strip().lower() == requested_repo]
+            if same_repo:
+                return same_repo[0]
+
+        preferences = [
+            "aether-ollama-v1",
+            "qwen2.5-coder:14b",
+            "qwen2.5-coder:7b",
+            "llama3.1:8b",
+        ]
+        for preferred in preferences:
+            if preferred in available_models:
+                return preferred
+
+        return available_models[0]
+
+    async def _resolve_retry_model(self, candidate_url: str, requested_model: str) -> str | None:
+        available_models = await self._discover_available_models(candidate_url)
+        fallback_model = self._pick_fallback_model(requested_model, available_models)
+        if fallback_model and fallback_model != requested_model:
+            self._preferred_model_name = fallback_model
+            return fallback_model
+        return None
 
     def _client_timeout(self) -> httpx.Timeout:
         """
@@ -342,34 +431,52 @@ class OllamaBackend(BaseBackend):
 
     async def warmup(self, subsystem: Subsystem = Subsystem.AEGIS) -> str:
         model_name = self.model_for_subsystem(subsystem)
+        if self._preferred_model_name and self._preferred_model_name != model_name:
+            model_candidates = [self._preferred_model_name, model_name]
+        else:
+            model_candidates = [model_name]
+
         request_failures: list[tuple[str, httpx.RequestError]] = []
         for candidate_url in self._eligible_candidate_urls():
-            attempt_started = time.perf_counter()
-            try:
-                async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
-                    resp = await client.post(
-                        candidate_url,
-                        json={
-                            "model": model_name,
-                            "prompt": "Warmup request. Reply with: ready.",
-                            "stream": False,
-                            "keep_alive": self.keep_alive,
-                        },
-                    )
-                    resp.raise_for_status()
-                self._preferred_url = candidate_url
-                self._mark_url_success(candidate_url)
-                self._record_attempt_metric("warmup", candidate_url, "success", time.perf_counter() - attempt_started)
-                return model_name
-            except httpx.HTTPStatusError as exc:
-                self._record_attempt_metric("warmup", candidate_url, "http_error", time.perf_counter() - attempt_started)
-                raise BackendUnavailableError(
-                    f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
-                ) from exc
-            except httpx.RequestError as exc:
-                self._mark_url_failure(candidate_url)
-                request_failures.append((candidate_url, exc))
-                self._record_attempt_metric("warmup", candidate_url, "request_error", time.perf_counter() - attempt_started)
+            model_index = 0
+            while model_index < len(model_candidates):
+                requested_model = model_candidates[model_index]
+                attempt_started = time.perf_counter()
+                try:
+                    async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
+                        resp = await client.post(
+                            candidate_url,
+                            json={
+                                "model": requested_model,
+                                "prompt": "Warmup request. Reply with: ready.",
+                                "stream": False,
+                                "keep_alive": self.keep_alive,
+                            },
+                        )
+                        resp.raise_for_status()
+                    self._preferred_url = candidate_url
+                    self._mark_url_success(candidate_url)
+                    self._preferred_model_name = requested_model
+                    self._record_attempt_metric("warmup", candidate_url, "success", time.perf_counter() - attempt_started)
+                    return requested_model
+                except httpx.HTTPStatusError as exc:
+                    if self._looks_like_missing_model_error(exc):
+                        retry_model = await self._resolve_retry_model(candidate_url, requested_model)
+                        if retry_model and retry_model not in model_candidates:
+                            model_candidates.append(retry_model)
+                            model_index += 1
+                            continue
+                    self._record_attempt_metric("warmup", candidate_url, "http_error", time.perf_counter() - attempt_started)
+                    raise BackendUnavailableError(
+                        f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
+                    ) from exc
+                except httpx.RequestError as exc:
+                    self._mark_url_failure(candidate_url)
+                    request_failures.append((candidate_url, exc))
+                    self._record_attempt_metric("warmup", candidate_url, "request_error", time.perf_counter() - attempt_started)
+                    break
+
+                model_index += 1
 
         if request_failures:
             raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]
@@ -378,45 +485,63 @@ class OllamaBackend(BaseBackend):
 
     async def generate(self, prompt: str, subsystem: Subsystem) -> tuple[str, str, BackendAttemptSummary]:
         model_name = self.model_for_subsystem(subsystem)
+        if self._preferred_model_name and self._preferred_model_name != model_name:
+            model_candidates = [self._preferred_model_name, model_name]
+        else:
+            model_candidates = [model_name]
+
         request_failures: list[tuple[str, httpx.RequestError]] = []
         attempt_summary = BackendAttemptSummary()
         for attempt_index, candidate_url in enumerate(self._eligible_candidate_urls()):
-            attempt_summary.attempts += 1
-            attempt_started = time.perf_counter()
-            try:
-                async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
-                    resp = await client.post(
-                        candidate_url,
-                        json={
-                            "model": model_name,
-                            "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
-                            "stream": False,
-                            "keep_alive": self.keep_alive,
-                        },
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    text = (data.get("response") or "").strip()
-                    if not text:
-                        self._record_attempt_metric("generate", candidate_url, "empty", time.perf_counter() - attempt_started)
-                        raise BackendUnavailableError(
-                            f"Model backend at {candidate_url} returned an empty response for model {model_name}."
+            model_index = 0
+            while model_index < len(model_candidates):
+                requested_model = model_candidates[model_index]
+                attempt_summary.attempts += 1
+                attempt_started = time.perf_counter()
+                try:
+                    async with httpx.AsyncClient(timeout=self._client_timeout()) as client:
+                        resp = await client.post(
+                            candidate_url,
+                            json={
+                                "model": requested_model,
+                                "prompt": f"{SYSTEM_PROMPTS.get(subsystem, SYSTEM_PROMPTS[Subsystem.AEGIS])}\n\nUser request:\n{prompt}",
+                                "stream": False,
+                                "keep_alive": self.keep_alive,
+                            },
                         )
-                    self._preferred_url = candidate_url
-                    self._mark_url_success(candidate_url)
-                    attempt_summary.fallback_hops = attempt_index
-                    self._record_attempt_metric("generate", candidate_url, "success", time.perf_counter() - attempt_started)
-                    return text, model_name, attempt_summary
-            except httpx.HTTPStatusError as exc:
-                self._record_attempt_metric("generate", candidate_url, "http_error", time.perf_counter() - attempt_started)
-                raise BackendUnavailableError(
-                    f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
-                ) from exc
-            except httpx.RequestError as exc:
-                self._mark_url_failure(candidate_url)
-                request_failures.append((candidate_url, exc))
-                attempt_summary.failed_attempts += 1
-                self._record_attempt_metric("generate", candidate_url, "request_error", time.perf_counter() - attempt_started)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        text = (data.get("response") or "").strip()
+                        if not text:
+                            self._record_attempt_metric("generate", candidate_url, "empty", time.perf_counter() - attempt_started)
+                            raise BackendUnavailableError(
+                                f"Model backend at {candidate_url} returned an empty response for model {requested_model}."
+                            )
+                        self._preferred_url = candidate_url
+                        self._mark_url_success(candidate_url)
+                        self._preferred_model_name = requested_model
+                        attempt_summary.fallback_hops = attempt_index
+                        self._record_attempt_metric("generate", candidate_url, "success", time.perf_counter() - attempt_started)
+                        return text, requested_model, attempt_summary
+                except httpx.HTTPStatusError as exc:
+                    if self._looks_like_missing_model_error(exc):
+                        retry_model = await self._resolve_retry_model(candidate_url, requested_model)
+                        if retry_model and retry_model not in model_candidates:
+                            model_candidates.append(retry_model)
+                            model_index += 1
+                            continue
+                    self._record_attempt_metric("generate", candidate_url, "http_error", time.perf_counter() - attempt_started)
+                    raise BackendUnavailableError(
+                        f"Model backend at {candidate_url} returned {exc.response.status_code}: {exc.response.text}"
+                    ) from exc
+                except httpx.RequestError as exc:
+                    self._mark_url_failure(candidate_url)
+                    request_failures.append((candidate_url, exc))
+                    attempt_summary.failed_attempts += 1
+                    self._record_attempt_metric("generate", candidate_url, "request_error", time.perf_counter() - attempt_started)
+                    break
+
+                model_index += 1
 
         if request_failures:
             raise BackendUnavailableError(self._format_request_failures(request_failures)) from request_failures[-1][1]

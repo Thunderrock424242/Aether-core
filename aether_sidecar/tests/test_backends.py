@@ -13,15 +13,17 @@ def force_containerized_runtime(monkeypatch):
 
 
 class _FakeResponse:
-    def __init__(self, data: dict[str, str], status_code: int = 200):
-        self._data = data
+    def __init__(self, data: dict | None = None, status_code: int = 200, text: str = "", method: str = "POST", url: str = "http://example.com"):
+        self._data = data or {}
         self.status_code = status_code
-        self.text = ""
+        self.text = text
+        self._method = method
+        self._url = url
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            request = httpx.Request("POST", "http://example.com")
-            response = httpx.Response(self.status_code, request=request, text="error")
+            request = httpx.Request(self._method, self._url)
+            response = httpx.Response(self.status_code, request=request, text=self.text or "error")
             raise httpx.HTTPStatusError("status error", request=request, response=response)
 
     def json(self) -> dict[str, str]:
@@ -29,8 +31,9 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    def __init__(self, responses_by_url, calls):
+    def __init__(self, responses_by_url, calls, get_responses_by_url=None):
         self.responses_by_url = responses_by_url
+        self.get_responses_by_url = get_responses_by_url or {}
         self.calls = calls
 
     async def __aenter__(self):
@@ -42,6 +45,13 @@ class _FakeAsyncClient:
     async def post(self, url, json):
         self.calls.append(url)
         action = self.responses_by_url.get(url)
+        if isinstance(action, Exception):
+            raise action
+        return action
+
+    async def get(self, url):
+        self.calls.append(f"GET {url}")
+        action = self.get_responses_by_url.get(url)
         if isinstance(action, Exception):
             raise action
         return action
@@ -496,3 +506,99 @@ def test_connection_attempt_chain_matches_eligible_candidate_urls(monkeypatch):
     monkeypatch.setattr(backend, "_eligible_candidate_urls", lambda: ["a", "b"])
 
     assert backend.connection_attempt_chain() == ["a", "b"]
+
+
+def test_pick_fallback_model_prefers_existing_same_family_tag():
+    available = ["llama3.1:latest", "qwen2.5-coder:7b"]
+
+    selected = OllamaBackend._pick_fallback_model("llama3.1:8b", available)
+
+    assert selected == "llama3.1:latest"
+
+
+@pytest.mark.anyio
+async def test_generate_retries_with_available_model_when_requested_model_missing(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    calls = []
+    local_url = "http://127.0.0.1:11434/api/generate"
+    tags_url = "http://127.0.0.1:11434/api/tags"
+    backend = OllamaBackend(local_url, "llama3.1:8b")
+
+    missing_model = _FakeResponse(
+        status_code=404,
+        text="{\"error\":\"model 'llama3.1:8b' not found\"}",
+        method="POST",
+        url=local_url,
+    )
+    ok_response = _FakeResponse({"response": "ready"})
+
+    state = {"post_calls": 0}
+
+    class _StatefulClient(_FakeAsyncClient):
+        async def post(self, url, json):
+            self.calls.append(f"POST {url} model={json.get('model')}")
+            state["post_calls"] += 1
+            if state["post_calls"] == 1:
+                return missing_model
+            return ok_response
+
+    def fake_client_factory(*args, **kwargs):
+        return _StatefulClient({}, calls, get_responses_by_url={tags_url: _FakeResponse({"models": [{"name": "aether-ollama-v1"}]}, method="GET", url=tags_url)})
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client_factory)
+
+    text, model_name, summary = await backend.generate("hello", Subsystem.AEGIS)
+
+    assert text == "ready"
+    assert model_name == "aether-ollama-v1"
+    assert any(call == f"GET {tags_url}" for call in calls)
+    assert summary.attempts == 2
+
+
+@pytest.mark.anyio
+async def test_warmup_retries_with_available_model_when_requested_model_missing(monkeypatch):
+    monkeypatch.setattr(OllamaBackend, "_detect_linux_docker_gateway", staticmethod(lambda: None))
+    monkeypatch.setattr(OllamaBackend, "_detect_resolv_conf_nameserver", staticmethod(lambda: None))
+
+    def fake_getaddrinfo(host, port):
+        return [(None, None, None, None, (host, port))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+    calls = []
+    local_url = "http://127.0.0.1:11434/api/generate"
+    tags_url = "http://127.0.0.1:11434/api/tags"
+    backend = OllamaBackend(local_url, "llama3.1:8b")
+
+    missing_model = _FakeResponse(
+        status_code=404,
+        text="{\"error\":\"model 'llama3.1:8b' not found\"}",
+        method="POST",
+        url=local_url,
+    )
+    ok_response = _FakeResponse({"response": "ready"})
+
+    state = {"post_calls": 0}
+
+    class _StatefulClient(_FakeAsyncClient):
+        async def post(self, url, json):
+            self.calls.append(f"POST {url} model={json.get('model')}")
+            state["post_calls"] += 1
+            if state["post_calls"] == 1:
+                return missing_model
+            return ok_response
+
+    def fake_client_factory(*args, **kwargs):
+        return _StatefulClient({}, calls, get_responses_by_url={tags_url: _FakeResponse({"models": [{"name": "aether-ollama-v1"}]}, method="GET", url=tags_url)})
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client_factory)
+
+    checked_model = await backend.warmup(Subsystem.AEGIS)
+
+    assert checked_model == "aether-ollama-v1"
+    assert any(call == f"GET {tags_url}" for call in calls)
