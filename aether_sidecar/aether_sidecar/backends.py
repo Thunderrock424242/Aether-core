@@ -47,6 +47,7 @@ class OllamaBackend(BaseBackend):
         base_url: str,
         model_name: str,
         timeout_seconds: float = 20.0,
+        connect_timeout_seconds: float = 1.0,
         subsystem_models: dict[Subsystem, str] | None = None,
         keep_alive: str = "15m",
         fallback_urls: list[str] | None = None,
@@ -55,12 +56,14 @@ class OllamaBackend(BaseBackend):
         self.base_url = base_url
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
+        self.connect_timeout_seconds = max(0.1, connect_timeout_seconds)
         self.subsystem_models = subsystem_models or {}
         self.keep_alive = keep_alive
         self.fallback_urls = fallback_urls or []
         self.failure_backoff_seconds = max(0.0, failure_backoff_seconds)
         self._preferred_url: str | None = None
         self._url_backoff_until: dict[str, float] = {}
+        self._url_failure_counts: dict[str, int] = {}
         self._preferred_model_name: str | None = None
 
 
@@ -159,7 +162,7 @@ class OllamaBackend(BaseBackend):
         URLs are tried promptly, while successful connections should tolerate
         slower first-token/model-load latency.
         """
-        return httpx.Timeout(connect=3.0, read=self.timeout_seconds, write=10.0, pool=10.0)
+        return httpx.Timeout(connect=self.connect_timeout_seconds, read=self.timeout_seconds, write=10.0, pool=10.0)
 
     @staticmethod
     def _is_containerized_runtime() -> bool:
@@ -399,10 +402,14 @@ class OllamaBackend(BaseBackend):
         if self.failure_backoff_seconds <= 0:
             return
 
-        self._url_backoff_until[url] = time.monotonic() + self.failure_backoff_seconds
+        failures = self._url_failure_counts.get(url, 0) + 1
+        self._url_failure_counts[url] = failures
+        backoff_seconds = min(self.failure_backoff_seconds * (2 ** (failures - 1)), 300.0)
+        self._url_backoff_until[url] = time.monotonic() + backoff_seconds
 
     def _mark_url_success(self, url: str) -> None:
         self._url_backoff_until.pop(url, None)
+        self._url_failure_counts.pop(url, None)
 
     def _eligible_candidate_urls(self) -> list[str]:
         candidates = self.candidate_urls()

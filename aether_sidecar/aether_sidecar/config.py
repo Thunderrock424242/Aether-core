@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     model_auto_ram_gb_high: float = 24.0
     model_auto_ram_gb_mid: float = 12.0
     request_timeout_seconds: float = 20.0
+    request_connect_timeout_seconds: float = 1.0
     max_message_chars: int = 800
     memory_turn_limit: int = 6
     learning_lesson_limit: int = 16

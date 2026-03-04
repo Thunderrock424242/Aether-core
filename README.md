@@ -68,6 +68,7 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_DOCKER_HOST_GATEWAY=` optional explicit Docker host gateway (for example `172.17.0.1`) if your environment uses a custom bridge route.
 - `AETHER_OLLAMA_FALLBACK_URLS=` optional comma-separated backup Ollama endpoints (for example `http://host.docker.internal:11434/api/generate,http://172.17.0.1:11434/api/generate`) tried before auto-detected container host aliases.
 - `AETHER_OLLAMA_KEEP_ALIVE=15m` keeps models warm in Ollama so first-token latency stays low during idle periods.
+- `AETHER_REQUEST_CONNECT_TIMEOUT_SECONDS=1.0` controls per-endpoint TCP connect timeout before trying the next fallback URL (lower values reduce multi-alias timeout spikes).
 - `/metrics` now includes backend-attempt telemetry (`aether_backend_attempts_total`, `aether_backend_attempt_latency_seconds`, `aether_generate_fallback_hops`) so you can alert on fallback churn before players notice latency degradation.
 - `AETHER_MODEL_AUTO_SELECT=false` enables hardware-aware model auto-selection at startup.
 - `AETHER_MODEL_AUTO_PROFILE=auto` uses memory-based tiering (`auto`) or forces a tier (`low`, `mid`, `high`).
