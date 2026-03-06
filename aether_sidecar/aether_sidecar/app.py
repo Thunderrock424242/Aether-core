@@ -63,6 +63,7 @@ backend = OllamaBackend(
     settings.ollama_url,
     resolved_model_name,
     settings.request_timeout_seconds,
+    connect_timeout_seconds=settings.request_connect_timeout_seconds,
     subsystem_models=subsystem_models,
     keep_alive=settings.ollama_keep_alive,
     fallback_urls=fallback_urls,

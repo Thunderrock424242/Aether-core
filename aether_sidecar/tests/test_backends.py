@@ -501,6 +501,71 @@ def test_eligible_candidate_urls_returns_full_list_when_all_backed_off(monkeypat
     assert backend._eligible_candidate_urls() == ["a", "b"]
 
 
+def test_mark_url_failure_uses_exponential_backoff_and_caps_at_5_minutes(monkeypatch):
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b", failure_backoff_seconds=30.0)
+
+    now = {"value": 100.0}
+    monkeypatch.setattr("aether_sidecar.backends.time.monotonic", lambda: now["value"])
+
+    backend._mark_url_failure("a")
+    assert backend._url_backoff_until["a"] == 130.0
+
+    now["value"] = 140.0
+    backend._mark_url_failure("a")
+    assert backend._url_backoff_until["a"] == 200.0
+
+    now["value"] = 210.0
+    backend._mark_url_failure("a")
+    assert backend._url_backoff_until["a"] == 330.0
+
+    now["value"] = 340.0
+    backend._mark_url_failure("a")
+    assert backend._url_backoff_until["a"] == 580.0
+
+    now["value"] = 600.0
+    backend._mark_url_failure("a")
+    assert backend._url_backoff_until["a"] == 900.0
+
+
+def test_mark_url_success_resets_failure_backoff_state(monkeypatch):
+    backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b", failure_backoff_seconds=30.0)
+    monkeypatch.setattr("aether_sidecar.backends.time.monotonic", lambda: 100.0)
+
+    backend._mark_url_failure("a")
+    assert backend._url_failure_counts["a"] == 1
+
+    backend._mark_url_success("a")
+    assert "a" not in backend._url_backoff_until
+    assert "a" not in backend._url_failure_counts
+
+
+
+
+def test_client_timeout_uses_configured_connect_timeout():
+    backend = OllamaBackend(
+        "http://127.0.0.1:11434/api/generate",
+        "llama3.1:8b",
+        timeout_seconds=20.0,
+        connect_timeout_seconds=0.7,
+    )
+
+    timeout = backend._client_timeout()
+
+    assert timeout.connect == 0.7
+    assert timeout.read == 20.0
+
+
+def test_client_timeout_connect_has_minimum_floor():
+    backend = OllamaBackend(
+        "http://127.0.0.1:11434/api/generate",
+        "llama3.1:8b",
+        connect_timeout_seconds=0.0,
+    )
+
+    timeout = backend._client_timeout()
+
+    assert timeout.connect == 0.1
+
 def test_connection_attempt_chain_matches_eligible_candidate_urls(monkeypatch):
     backend = OllamaBackend("http://127.0.0.1:11434/api/generate", "llama3.1:8b")
     monkeypatch.setattr(backend, "_eligible_candidate_urls", lambda: ["a", "b"])
