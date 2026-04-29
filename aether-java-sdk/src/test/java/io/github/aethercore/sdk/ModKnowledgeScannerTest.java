@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
@@ -56,5 +57,42 @@ class ModKnowledgeScannerTest {
         assertTrue(indexes.stream().anyMatch(i -> i.subsystem().equals("Sentinel")));
         assertTrue(indexes.stream().anyMatch(i -> i.subsystem().equals("Builder")));
         assertTrue(indexes.stream().allMatch(i -> !i.entries().isEmpty()));
+    }
+
+    @Test
+    void emitsProgressAndCachesWhenNoChangesDetected() throws IOException {
+        Path tempDir = Files.createTempDirectory("aether-mod-scan-cache-test");
+        Path modsDir = tempDir.resolve("mods");
+        Files.createDirectories(modsDir);
+        Files.writeString(modsDir.resolve("mod.json"), "{\"id\":\"demo\"}");
+
+        HostingConfig config = new HostingConfig(
+                true,
+                true,
+                BackendMode.AUTO,
+                "http://127.0.0.1:8765",
+                true,
+                "http://127.0.0.1:8765",
+                "https://ollama.com/download",
+                List.of("echo", "start"),
+                Path.of("."),
+                true,
+                List.of(modsDir),
+                Map.of("Sentinel", "General strategy guidance")
+        );
+
+        ModKnowledgeScanner scanner = new ModKnowledgeScanner();
+        List<ModKnowledgeScanProgress> firstProgress = new ArrayList<>();
+        ModKnowledgeScanResult first = scanner.scanWithProgress(config, firstProgress::add);
+
+        List<ModKnowledgeScanProgress> secondProgress = new ArrayList<>();
+        ModKnowledgeScanResult second = scanner.scanWithProgress(config, secondProgress::add);
+
+        assertFalse(first.fromCache());
+        assertTrue(second.fromCache());
+        assertFalse(firstProgress.isEmpty());
+        assertFalse(secondProgress.isEmpty());
+        assertTrue(secondProgress.get(secondProgress.size() - 1).cacheHit());
+        assertTrue(secondProgress.get(secondProgress.size() - 1).done());
     }
 }
