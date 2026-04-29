@@ -10,6 +10,7 @@ A.E.T.H.E.R AI planning + implementation workspace.
 - [`docs/ai-production-orchestration.md`](docs/ai-production-orchestration.md) - production deployment + observability stack.
 
 - [`docs/github-packages-java-sdk.md`](docs/github-packages-java-sdk.md) - publish Java SDK to GitHub Packages and consume it from NeoForge mods.
+- [`docs/ai-standalone-assistant-service.md`](docs/ai-standalone-assistant-service.md) - how to run Aether as a Minecraft-agnostic personal assistant service.
 
 > Note: the Java SDK is optional and only acts as a JVM client for NeoForge mods; the AI runtime remains in `aether_sidecar`.
 > It now includes hosting policy helpers so mods can prefer dedicated-server hosting when enabled.
