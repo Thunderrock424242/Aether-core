@@ -43,6 +43,15 @@ public final class AetherSidecarManager {
         }
 
         boolean localHealthy = isHealthy(config.localSidecarBaseUrl(), Duration.ofSeconds(2));
+        if (!localHealthy && config.localModelDownloadEnabled() && !config.localModelDownloadCommand().isEmpty()) {
+            ProcessBuilder downloadBuilder = new ProcessBuilder(config.localModelDownloadCommand());
+            downloadBuilder.directory(config.sidecarWorkingDirectory().toFile());
+            downloadBuilder.redirectErrorStream(true);
+            Process downloadProcess = downloadBuilder.start();
+            downloadProcess.waitFor();
+            localHealthy = isHealthy(config.localSidecarBaseUrl(), Duration.ofSeconds(5));
+        }
+
         if (localHealthy) {
             return config.localSidecarBaseUrl();
         }
@@ -84,7 +93,7 @@ public final class AetherSidecarManager {
         StringBuilder message = new StringBuilder();
         message.append("Local A.E.T.H.E.R runtime is required but unavailable at ")
                 .append(config.localSidecarBaseUrl())
-                .append(". Install/start the companion runtime (includes Ollama), then retry.");
+                .append(". Install/start the companion runtime (includes Ollama), then retry. If your mod supports download toggles, enable local model download or switch to remote mode.");
 
         if (!config.runtimeInstallHelpUrl().isBlank()) {
             message.append(" Setup guide: ").append(config.runtimeInstallHelpUrl());

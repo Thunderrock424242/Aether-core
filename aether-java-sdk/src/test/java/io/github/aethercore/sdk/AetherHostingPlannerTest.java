@@ -57,7 +57,9 @@ class AetherHostingPlannerTest {
                 Path.of("."),
                 false,
                 List.of(Path.of("mods")),
-                Map.of()
+                Map.of(),
+                false,
+                List.of()
         );
     }
 }

@@ -30,7 +30,7 @@ class AetherSidecarManagerTest {
                 () -> manager.ensureHosting(HostingRole.DEDICATED_SERVER, config));
 
         assertEquals(
-                "Local A.E.T.H.E.R runtime is required but unavailable at http://127.0.0.1:1. Install/start the companion runtime (includes Ollama), then retry. Setup guide: https://ollama.com/download",
+                "Local A.E.T.H.E.R runtime is required but unavailable at http://127.0.0.1:1. Install/start the companion runtime (includes Ollama), then retry. If your mod supports download toggles, enable local model download or switch to remote mode. Setup guide: https://ollama.com/download",
                 exception.getMessage());
     }
 
@@ -47,6 +47,8 @@ class AetherSidecarManagerTest {
                 Path.of("."),
                 false,
                 List.of(Path.of("mods")),
-                Map.of());
+                Map.of(),
+                false,
+                List.of());
     }
 }

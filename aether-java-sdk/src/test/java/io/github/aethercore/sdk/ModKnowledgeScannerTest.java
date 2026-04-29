@@ -46,7 +46,9 @@ class ModKnowledgeScannerTest {
                 Map.of(
                         "Sentinel", "General strategy guidance",
                         "Builder", "Construction and progression tips"
-                )
+                ),
+                false,
+                List.of()
         );
 
         ModKnowledgeScanner scanner = new ModKnowledgeScanner();
