@@ -75,6 +75,29 @@ Helpful environment flags for day-to-day dev:
 - `AETHER_MODEL_AUTO_CANDIDATES=high:qwen2.5-coder:14b,mid:qwen2.5-coder:7b,low:llama3.1:8b` maps model tiers to Ollama model names.
 - `AETHER_MODEL_AUTO_RAM_GB_HIGH=24` / `AETHER_MODEL_AUTO_RAM_GB_MID=12` tune RAM thresholds used when `AETHER_MODEL_AUTO_PROFILE=auto`.
 
+
+## VS Code workspace restart (run it again)
+If you are working from a VS Code workspace and want a reliable restart flow:
+
+1. Open the repo root (`Aether-core`) as the workspace folder.
+2. Open a new integrated terminal (**Terminal → New Terminal**).
+3. From the repo root, start the sidecar:
+
+```bash
+./scripts/run_sidecar_dev.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\run_sidecar_dev.ps1
+```
+
+4. If the previous run is still using port `8765`, stop it first (`Ctrl+C` in that terminal), then rerun the command above.
+5. Validate it started by opening `http://127.0.0.1:8765/docs` in your browser.
+
+Tip: in VS Code, pin the terminal tab for the sidecar so you can quickly stop/restart between NeoForge mod test runs.
+
 ## Teaching playground shortcut
 Use the helper scripts to avoid crafting raw `curl`/JSON each time you want to teach a lesson.
 
