@@ -80,7 +80,9 @@ class ModKnowledgeScannerTest {
                 Path.of("."),
                 true,
                 List.of(modsDir),
-                Map.of("Sentinel", "General strategy guidance")
+                Map.of("Sentinel", "General strategy guidance"),
+                false,
+                List.of()
         );
 
         ModKnowledgeScanner scanner = new ModKnowledgeScanner();
