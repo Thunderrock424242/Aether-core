@@ -21,6 +21,8 @@ public final class HostingConfig {
     private final boolean modKnowledgeScanEnabled;
     private final List<Path> modKnowledgeScanRoots;
     private final Map<String, String> subsystemObjectives;
+    private final boolean localModelDownloadEnabled;
+    private final List<String> localModelDownloadCommand;
 
     public HostingConfig(
             boolean hostingEnabled,
@@ -34,7 +36,9 @@ public final class HostingConfig {
             Path sidecarWorkingDirectory,
             boolean modKnowledgeScanEnabled,
             List<Path> modKnowledgeScanRoots,
-            Map<String, String> subsystemObjectives
+            Map<String, String> subsystemObjectives,
+            boolean localModelDownloadEnabled,
+            List<String> localModelDownloadCommand
     ) {
         this.hostingEnabled = hostingEnabled;
         this.autoStartEnabled = autoStartEnabled;
@@ -48,6 +52,8 @@ public final class HostingConfig {
         this.modKnowledgeScanEnabled = modKnowledgeScanEnabled;
         this.modKnowledgeScanRoots = List.copyOf(Objects.requireNonNull(modKnowledgeScanRoots, "modKnowledgeScanRoots"));
         this.subsystemObjectives = Map.copyOf(Objects.requireNonNull(subsystemObjectives, "subsystemObjectives"));
+        this.localModelDownloadEnabled = localModelDownloadEnabled;
+        this.localModelDownloadCommand = List.copyOf(Objects.requireNonNull(localModelDownloadCommand, "localModelDownloadCommand"));
     }
 
     public static HostingConfig defaults() {
@@ -63,7 +69,9 @@ public final class HostingConfig {
                 Path.of("."),
                 false,
                 List.of(Path.of("mods")),
-                Map.of()
+                Map.of(),
+                false,
+                List.of()
         );
     }
 
@@ -113,5 +121,13 @@ public final class HostingConfig {
 
     public Map<String, String> subsystemObjectives() {
         return subsystemObjectives;
+    }
+
+    public boolean localModelDownloadEnabled() {
+        return localModelDownloadEnabled;
+    }
+
+    public List<String> localModelDownloadCommand() {
+        return localModelDownloadCommand;
     }
 }
