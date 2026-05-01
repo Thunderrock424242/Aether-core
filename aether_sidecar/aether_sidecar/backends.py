@@ -2,6 +2,7 @@ from urllib.parse import urlparse, urlunparse
 
 import os
 import socket
+import subprocess
 import time
 from dataclasses import dataclass
 from ipaddress import IPv4Address
@@ -227,6 +228,39 @@ class OllamaBackend(BaseBackend):
         return None
 
     @staticmethod
+    def _detect_default_gateway_iproute() -> str | None:
+        """Best-effort detection via `ip route` output (common in containers)."""
+        try:
+            completed = subprocess.run(
+                ["ip", "-4", "route", "show", "default"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=1.5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+        output = (completed.stdout or "").strip()
+        if not output:
+            return None
+
+        for line in output.splitlines():
+            parts = line.split()
+            for index, part in enumerate(parts):
+                if part != "via" or index + 1 >= len(parts):
+                    continue
+                candidate = parts[index + 1]
+                try:
+                    ip = IPv4Address(candidate)
+                except ValueError:
+                    continue
+                if not ip.is_loopback:
+                    return str(ip)
+
+        return None
+
+    @staticmethod
     def _candidate_from_host_token(token: str, parsed_base) -> str | None:
         value = token.strip()
         if not value:
@@ -344,6 +378,10 @@ class OllamaBackend(BaseBackend):
         resolv_conf_ip = self._detect_resolv_conf_nameserver()
         if resolv_conf_ip:
             hostnames.append(resolv_conf_ip)
+
+        iproute_gateway = self._detect_default_gateway_iproute()
+        if iproute_gateway:
+            hostnames.append(iproute_gateway)
 
         hostnames.extend(fallback_ips)
 
